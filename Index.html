@@ -78,6 +78,17 @@
   .btn.sm{padding:6px 10px;font-size:12px}
   .del{color:var(--dim);padding:5px;border-radius:3px}
   .del:active{color:var(--rust)}
+  .langsel{background:transparent;border:1px solid var(--line-soft);color:var(--muted);font-size:11px;
+    border-radius:3px;padding:7px 8px;outline:none}
+  .langsel:focus{border-color:var(--brass)}
+
+  .lockscreen{position:fixed;inset:0;z-index:200;background:var(--navy-deep);display:flex;
+    align-items:center;justify-content:center;padding:24px}
+  .lockscreen.hidden{display:none}
+  .lockbox{width:100%;max-width:340px;background:var(--navy-card);border:1px solid var(--line);
+    border-radius:6px;padding:30px 26px}
+  .lockicon{width:52px;height:52px;border-radius:50%;border:1px solid var(--line-soft);
+    display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
   label.f{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
   label.f>span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-family:'JetBrains Mono',monospace}
   input.f,textarea.f,select.f{background:var(--navy);border:1px solid var(--line-soft);border-radius:3px;
@@ -178,6 +189,20 @@
 </head>
 <body>
 
+<div class="lockscreen" id="lockScreen">
+  <div class="lockbox">
+    <div class="lockicon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#C89B5C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg>
+    </div>
+    <div class="lbl" id="lockEyebrow" style="text-align:center">ERİŞİM KODU</div>
+    <h2 class="display" id="lockTitle" style="text-align:center;margin-top:6px;font-size:20px">Bu uygulama davetliye özeldir</h2>
+    <p class="hint" id="lockBody" style="text-align:center;margin-top:8px">Kaptan'dan aldığınız erişim kodunu girin.</p>
+    <input class="f" id="lockInput" type="text" autocomplete="off" autocapitalize="off" style="margin-top:18px;text-align:center;letter-spacing:.15em" placeholder="Erişim kodu">
+    <button class="btn" id="lockBtn" style="width:100%;justify-content:center;margin-top:10px">Giriş</button>
+    <p id="lockErr" style="color:var(--rust);font-size:12px;text-align:center;margin-top:10px;display:none">Kod yanlış, tekrar deneyin.</p>
+  </div>
+</div>
+
 <div class="shell">
   <aside>
     <div class="brand">
@@ -196,8 +221,9 @@
         <div class="brg mono" id="topbrg">000°</div>
         <h2 id="toptitle">Genel Bakış</h2>
       </div>
-      <div style="display:flex;gap:8px">
-        <label class="btn ghost sm" for="importFile">İçe Aktar</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select class="langsel" id="langSel"></select>
+        <label class="btn ghost sm" for="importFile" id="importLbl">İçe Aktar</label>
         <input type="file" id="importFile" accept="application/json" style="position:absolute;width:1px;height:1px;opacity:0">
         <button class="btn ghost sm" id="exportBtn">Yedek Al</button>
       </div>
@@ -241,6 +267,376 @@
 <div id="printroot"></div>
 
 <script>
+/* ================================================================
+   ERİŞİM KODU — Test grubunla paylaşmadan önce bunu değiştir.
+   Kodu bilmeyen biri linke tıklasa bile içeriği göremez.
+   Farklı test turları için istediğin zaman değiştirip yeniden
+   yayınlayabilirsin (eski kodu bilenler tekrar girmek zorunda kalır).
+   ================================================================ */
+const ACCESS_CODE = 'MEIRA2026';
+
+/* ================= i18n ================= */
+const LANGS=['tr','en','ru','es','it'];
+const LANG_NAMES={tr:'Türkçe',en:'English',ru:'Русский',es:'Español',it:'Italiano'};
+const RESPOND_LANG={tr:'Turkish',en:'English',ru:'Russian',es:'Spanish',it:'Italian'};
+let LANG=localStorage.getItem('yy_lang')||'tr';
+if(!LANGS.includes(LANG))LANG='tr';
+
+const T={
+tr:{
+  appName:'Yat Yönetim', appEyebrow:'KAPTAN KÖŞESİ', sidefoot:'VERİ CİHAZINIZDA SAKLANIR',
+  logbookSuffix:'SEYİR DEFTERİ', importBtn:'İçe Aktar', exportBtn:'Yedek Al',
+  secOverview:'Genel Bakış', secOverviewShort:'Bakış',
+  secYachts:'Tekne Profilleri', secYachtsShort:'Tekne',
+  secRoutes:'Rota Kütüphanesi', secRoutesShort:'Rota',
+  secItins:'İtinerary / Broşür', secItinsShort:'Broşür',
+  secLibrary:'Denizcilik Kütüphanesi', secLibraryShort:'Kütüphane',
+  secFiles:'Fotoğraf & Dosya', secFilesShort:'Arşiv',
+  statYachts:'TEKNE', unitProfile:'profil', statRoutes:'ROTA', unitRegistered:'kayıtlı',
+  statItins:'BROŞÜR', unitDoc:'doküman', statLibrary:'KÜTÜPHANE', unitSource:'kaynak',
+  statFiles:'ARŞİV', unitFile:'dosya', quickAccess:'HIZLI ERİŞİM',
+  edit:'Düzenle', save:'Kaydet', open_:'Aç', info:'Bilgi',
+  yachtEmpty:'TEKNE PROFİLİ YOK', yachtAddBtn:'Tekne Ekle', yachtName:'Tekne Adı', yachtType:'Tip',
+  yachtGuests:'Misafir', yachtSpeed:'Seyir Hızı (kt)', yachtLoa:'Boy (LOA m)', yachtPort:'Ana Liman',
+  yachtPhoto:'Fotoğraf', guestsLbl:'MİSAFİR', speedLbl:'HIZ', portLbl:'LİMAN',
+  routeAddBtn:'Rota Ekle', routeEmpty:'ROTA KÜTÜPHANESİ BOŞ', routeName:'Rota Adı', routeRegion:'Bölge',
+  routeDays:'Gün Sayısı', routeStops:'Duraklar (virgülle)', dayWordShort:'GÜN',
+  itinAddBtn:'Broşür Ekle', itinEmpty:'HENÜZ BROŞÜR YOK', noYacht:'tekne yok', noDate:'tarih yok',
+  daysWord:'gün', backToItins:'← Broşürler', aiWriteDay:'2. Kaptan ile Gün Yaz', addDay:'Gün Ekle',
+  printBtn:'PDF / Yazdır', brochureLbl:'BROŞÜR', cruiseSpeedPrefix:'seyir hızı', noDaysYet:'HENÜZ GÜN EKLENMEDİ',
+  itinTitle:'Başlık', itinYacht:'Tekne', itinRoute:'Rota', selectPlaceholder:'Seçin…',
+  itinDates:'Tarihler', itinIntro:'Giriş Metni (kapak)',
+  dayNoTitle:'İsimsiz', departLbl:'KALKIŞ', arriveLbl:'VARIŞ', distanceLbl:'MESAFE', durationLbl:'SÜRE',
+  addImage:'Görsel', dayTitleFld:'Gün Başlığı', dayDateFld:'Tarih', dayNarrative:'Anlatı',
+  fromFld:'Nereden', toFld:'Nereye', departTimeFld:'Kalkış Saati', arriveTimeFld:'Varış Saati',
+  distanceFld:'Mesafe (nm)', speedFld:'Hız (boş = tekne hızı)', hourAbbr:'s', minAbbr:'dk',
+  libFolderless:'Klasörsüz', libNewFolder:'Yeni Klasör', libTargetFolder:'Hedef Klasör',
+  libPhotoBtn:'Fotoğraf', libDocBtn:'PDF / Belge', libEmpty:'KÜTÜPHANE BOŞ',
+  libEmptySub:'Pilot kitapları, seyir notları, liman rehberleri — PDF veya fotoğraf olarak ekleyin. 2. Kaptan bunları kaynak olarak kullanır.',
+  libFolderEmpty:'Bu klasörde henüz kaynak yok — yukarıdan görsel/PDF eklerken bu klasörü seç.',
+  libHint:'Her kitaba kendi klasörünü aç, sayfalarını o klasöre yükle. 2. Kaptan\'a bir bölge/durak verdiğinde, adı eşleşen klasörleri hiç sormadan tarar.',
+  folderCountSuffix:'klasör', libAccessSuffix:'2. Kaptan\'ın erişimine açık', notePlaceholder:'Not / konu…',
+  pageWordLower:'sayfa',
+  archEmpty:'ARŞİV BOŞ', archEmptySub:'Fotoğraf butonu galerinizi, Belge butonu Dosyalar\'ı açar.',
+  archCountSuffix:'dosya · cihazınızda', newOrEdit:'YENİ / DÜZENLE',
+  confirmDeleteRecord:'Bu kayıt silinsin mi?', confirmDeleteDay:'Bu gün silinsin mi?',
+  confirmDeleteFile:'Bu dosya silinsin mi?', promptNewFolder:'Yeni klasör adı (kitabın adı):',
+  confirmDeleteFolder:'klasörü silinsin mi? İçindeki kaynaklar silinmez, sadece klasörsüz kalır.',
+  alertYachtNameRequired:'Tekne adı gerekli.', alertRouteNameRequired:'Rota adı gerekli.',
+  alertTitleRequired:'Başlık gerekli.',
+  confirmImportMode:'Tamam = MEVCUT VERİNİN ÜZERİNE YAZ (yedekteki ile değiştir)\nİptal = MEVCUT VERİYLE BİRLEŞTİR (ekle, üzerine yazma)',
+  alertImportDone:'İçe aktarma tamamlandı. Not: fotoğraflar yedeğe dahil değildir, ayrıca eklenmelidir.',
+  alertImportError:'Dosya okunamadı: ', errInvalidFile:'geçersiz dosya',
+  printCoverEyebrow:'KAPTAN KÖŞESİ · SEYİR PROGRAMI', printDayWord:'GÜN', printDepart:'Kalkış',
+  printArrive:'Varış', printDistance:'Mesafe', printDuration:'Tahmini Süre',
+  chatConsultLabel:'DANIŞMA HATTI', chatTitle:'2. Kaptan', chatClear:'Temizle',
+  chatPlaceholder:'Sorunuzu yazın…', chatSend:'Gönder',
+  chatLibEmpty:'Kütüphane boş — kaynak eklerseniz burada seçebilirsiniz.',
+  chatHint:'Durak/bölge adı yazarsan ilgili kitabı otomatik tararım. İçerik incelememi istediğin belirli bir sayfa varsa aşağıdan seç.',
+  chatKeyNeededTitle:'2. Kaptan\'ı bağlamak için API anahtarı gerekli.',
+  chatKeyNeededBody:'platform.claude.com adresinden anahtar oluşturup buraya yapıştırın. Anahtar yalnızca bu cihazda saklanır.',
+  chatKeySave:'Anahtarı Kaydet', chatCopy:'KOPYALA', chatShare:'PAYLAŞ', chatDownload:'İNDİR',
+  chatSaveArchive:'ARŞİVE KAYDET', chatCopied:'KOPYALANDI', chatSaved:'KAYDEDİLDİ',
+  chatEmptyIntro:'Rota planı, hava değerlendirmesi, liman bilgisi, broşür metni — ne gerekiyorsa sorun.<br><br>Uygulamadaki tüm sekmeleri görebiliyorum: tekneler, rotalar, broşürler, kütüphane ve arşiv. İnternette arama yapabilir, kütüphanenizdeki kaynakları okuyabilirim. Fotoğraf veya PDF de ekleyebilirsiniz.',
+  chatErrorPrefix:'Hata: ', chatErrorUnknown:'bilinmeyen', chatEmptyResponse:'(boş yanıt)',
+  chatConnFail:'Bağlantı kurulamadı: ', attachSuffix:'ek', libSourceSuffix:'kütüphane kaynağı',
+  libSourceAutoSuffix:'kütüphane kaynağı otomatik eklendi', evalAttachedFallback:'Ekteki kaynakları değerlendir.',
+  aiDayPrefillPre:'broşürü için bir sonraki günün metnini yazar mısın?', aiDayStopsFragment:'Rotadaki duraklar: ',
+  aiDayPrefillPost:'Rota, mesafe ve süre bilgisini de öner.',
+  captainNotePrefix:'2. Kaptan notu — ', langLabel:'Dil',
+  lockEyebrow:'ERİŞİM KODU', lockTitle:'Bu uygulama davetliye özeldir',
+  lockBody:'Kaptan\'dan aldığınız erişim kodunu girin.', lockPlaceholder:'Erişim kodu',
+  lockButton:'Giriş', lockError:'Kod yanlış, tekrar deneyin.'
+},
+en:{
+  appName:'Yacht Management', appEyebrow:"CAPTAIN'S CORNER", sidefoot:'DATA STORED ON YOUR DEVICE',
+  logbookSuffix:'LOGBOOK', importBtn:'Import', exportBtn:'Backup',
+  secOverview:'Overview', secOverviewShort:'Overview',
+  secYachts:'Yacht Profiles', secYachtsShort:'Yacht',
+  secRoutes:'Route Library', secRoutesShort:'Routes',
+  secItins:'Itinerary / Brochure', secItinsShort:'Brochure',
+  secLibrary:'Maritime Library', secLibraryShort:'Library',
+  secFiles:'Photos & Files', secFilesShort:'Files',
+  statYachts:'YACHTS', unitProfile:'profiles', statRoutes:'ROUTES', unitRegistered:'saved',
+  statItins:'BROCHURES', unitDoc:'documents', statLibrary:'LIBRARY', unitSource:'sources',
+  statFiles:'ARCHIVE', unitFile:'files', quickAccess:'QUICK ACCESS',
+  edit:'Edit', save:'Save', open_:'Open', info:'Info',
+  yachtEmpty:'NO YACHT PROFILE YET', yachtAddBtn:'Add Yacht', yachtName:'Yacht Name', yachtType:'Type',
+  yachtGuests:'Guests', yachtSpeed:'Cruising Speed (kt)', yachtLoa:'Length (LOA m)', yachtPort:'Home Port',
+  yachtPhoto:'Photo', guestsLbl:'GUESTS', speedLbl:'SPEED', portLbl:'PORT',
+  routeAddBtn:'Add Route', routeEmpty:'ROUTE LIBRARY IS EMPTY', routeName:'Route Name', routeRegion:'Region',
+  routeDays:'Number of Days', routeStops:'Stops (comma-separated)', dayWordShort:'DAYS',
+  itinAddBtn:'Add Brochure', itinEmpty:'NO BROCHURES YET', noYacht:'no yacht', noDate:'no dates',
+  daysWord:'days', backToItins:'← Brochures', aiWriteDay:'Write Day with 2nd Captain', addDay:'Add Day',
+  printBtn:'PDF / Print', brochureLbl:'BROCHURE', cruiseSpeedPrefix:'cruising speed', noDaysYet:'NO DAYS ADDED YET',
+  itinTitle:'Title', itinYacht:'Yacht', itinRoute:'Route', selectPlaceholder:'Select…',
+  itinDates:'Dates', itinIntro:'Intro Text (cover)',
+  dayNoTitle:'Untitled', departLbl:'DEPART', arriveLbl:'ARRIVE', distanceLbl:'DISTANCE', durationLbl:'DURATION',
+  addImage:'Image', dayTitleFld:'Day Title', dayDateFld:'Date', dayNarrative:'Narrative',
+  fromFld:'From', toFld:'To', departTimeFld:'Departure Time', arriveTimeFld:'Arrival Time',
+  distanceFld:'Distance (nm)', speedFld:'Speed (blank = yacht speed)', hourAbbr:'h', minAbbr:'m',
+  libFolderless:'No Folder', libNewFolder:'New Folder', libTargetFolder:'Target Folder',
+  libPhotoBtn:'Photo', libDocBtn:'PDF / Document', libEmpty:'LIBRARY IS EMPTY',
+  libEmptySub:'Add pilot books, sailing notes, harbor guides — as PDFs or photos. 2nd Captain uses these as sources.',
+  libFolderEmpty:'No sources in this folder yet — select it while adding an image/PDF above.',
+  libHint:'Open a folder for each book, upload its pages there. When you give 2nd Captain a region/stop, it scans matching folders without asking.',
+  folderCountSuffix:'folders', libAccessSuffix:'available to 2nd Captain', notePlaceholder:'Note / topic…',
+  pageWordLower:'pages',
+  archEmpty:'ARCHIVE IS EMPTY', archEmptySub:'The Photo button opens your gallery, the Document button opens Files.',
+  archCountSuffix:'files · on your device', newOrEdit:'NEW / EDIT',
+  confirmDeleteRecord:'Delete this record?', confirmDeleteDay:'Delete this day?',
+  confirmDeleteFile:'Delete this file?', promptNewFolder:'New folder name (the book\'s title):',
+  confirmDeleteFolder:'Delete this folder? Its sources will not be deleted, just unfoldered.',
+  alertYachtNameRequired:'Yacht name is required.', alertRouteNameRequired:'Route name is required.',
+  alertTitleRequired:'Title is required.',
+  confirmImportMode:'OK = OVERWRITE CURRENT DATA (replace with backup)\nCancel = MERGE WITH CURRENT DATA (add, don\'t overwrite)',
+  alertImportDone:'Import complete. Note: photos are not included in the backup and must be added separately.',
+  alertImportError:'Could not read file: ', errInvalidFile:'invalid file',
+  printCoverEyebrow:"CAPTAIN'S CORNER · VOYAGE PROGRAM", printDayWord:'DAY', printDepart:'Depart',
+  printArrive:'Arrive', printDistance:'Distance', printDuration:'Est. Duration',
+  chatConsultLabel:'ADVISORY LINE', chatTitle:'2nd Captain', chatClear:'Clear',
+  chatPlaceholder:'Ask your question…', chatSend:'Send',
+  chatLibEmpty:'Library is empty — add sources and select them here.',
+  chatHint:'Mention a stop/region name and I\'ll auto-scan the matching book. Pick a specific page below if you want me to inspect it.',
+  chatKeyNeededTitle:'An API key is needed to connect 2nd Captain.',
+  chatKeyNeededBody:'Create a key at platform.claude.com and paste it here. The key is stored only on this device.',
+  chatKeySave:'Save Key', chatCopy:'COPY', chatShare:'SHARE', chatDownload:'DOWNLOAD',
+  chatSaveArchive:'SAVE TO ARCHIVE', chatCopied:'COPIED', chatSaved:'SAVED',
+  chatEmptyIntro:'Route planning, weather assessment, harbor info, brochure text — ask whatever you need.<br><br>I can see every tab in the app: yachts, routes, brochures, library and archive. I can search the web and read your library sources. You can attach photos or PDFs too.',
+  chatErrorPrefix:'Error: ', chatErrorUnknown:'unknown', chatEmptyResponse:'(empty response)',
+  chatConnFail:'Could not connect: ', attachSuffix:'attachment(s)', libSourceSuffix:'library source(s)',
+  libSourceAutoSuffix:'library source(s) auto-attached', evalAttachedFallback:'Please review the attached sources.',
+  aiDayPrefillPre:'— could you write the text for the next day of this brochure?', aiDayStopsFragment:'Stops on the route: ',
+  aiDayPrefillPost:'Also suggest the route, distance and duration.',
+  captainNotePrefix:'2nd Captain note — ', langLabel:'Language',
+  lockEyebrow:'ACCESS CODE', lockTitle:'This app is invite-only',
+  lockBody:'Enter the access code you received from the Captain.', lockPlaceholder:'Access code',
+  lockButton:'Enter', lockError:'Wrong code, please try again.'
+},
+ru:{
+  appName:'Управление яхтой', appEyebrow:'КАПИТАНСКИЙ УГОЛОК', sidefoot:'ДАННЫЕ ХРАНЯТСЯ НА УСТРОЙСТВЕ',
+  logbookSuffix:'ВАХТЕННЫЙ ЖУРНАЛ', importBtn:'Импорт', exportBtn:'Резервная копия',
+  secOverview:'Обзор', secOverviewShort:'Обзор',
+  secYachts:'Профили яхт', secYachtsShort:'Яхта',
+  secRoutes:'Библиотека маршрутов', secRoutesShort:'Маршруты',
+  secItins:'Программа / Брошюра', secItinsShort:'Брошюра',
+  secLibrary:'Морская библиотека', secLibraryShort:'Библиотека',
+  secFiles:'Фото и файлы', secFilesShort:'Архив',
+  statYachts:'ЯХТЫ', unitProfile:'профилей', statRoutes:'МАРШРУТЫ', unitRegistered:'сохранено',
+  statItins:'БРОШЮРЫ', unitDoc:'документов', statLibrary:'БИБЛИОТЕКА', unitSource:'источников',
+  statFiles:'АРХИВ', unitFile:'файлов', quickAccess:'БЫСТРЫЙ ДОСТУП',
+  edit:'Изменить', save:'Сохранить', open_:'Открыть', info:'Инфо',
+  yachtEmpty:'НЕТ ПРОФИЛЕЙ ЯХТ', yachtAddBtn:'Добавить яхту', yachtName:'Название яхты', yachtType:'Тип',
+  yachtGuests:'Гости', yachtSpeed:'Крейс. скорость (уз)', yachtLoa:'Длина (LOA м)', yachtPort:'Порт приписки',
+  yachtPhoto:'Фото', guestsLbl:'ГОСТИ', speedLbl:'СКОРОСТЬ', portLbl:'ПОРТ',
+  routeAddBtn:'Добавить маршрут', routeEmpty:'БИБЛИОТЕКА МАРШРУТОВ ПУСТА', routeName:'Название маршрута', routeRegion:'Регион',
+  routeDays:'Кол-во дней', routeStops:'Стоянки (через запятую)', dayWordShort:'ДН.',
+  itinAddBtn:'Добавить брошюру', itinEmpty:'БРОШЮР ПОКА НЕТ', noYacht:'яхта не выбрана', noDate:'даты нет',
+  daysWord:'дн.', backToItins:'← Брошюры', aiWriteDay:'Написать день со 2-м капитаном', addDay:'Добавить день',
+  printBtn:'PDF / Печать', brochureLbl:'БРОШЮРА', cruiseSpeedPrefix:'крейс. скорость', noDaysYet:'ДНИ ЕЩЁ НЕ ДОБАВЛЕНЫ',
+  itinTitle:'Заголовок', itinYacht:'Яхта', itinRoute:'Маршрут', selectPlaceholder:'Выберите…',
+  itinDates:'Даты', itinIntro:'Вступительный текст (обложка)',
+  dayNoTitle:'Без названия', departLbl:'ОТПРАВЛ.', arriveLbl:'ПРИБЫТИЕ', distanceLbl:'РАССТ.', durationLbl:'ДЛИТ.',
+  addImage:'Фото', dayTitleFld:'Название дня', dayDateFld:'Дата', dayNarrative:'Описание',
+  fromFld:'Откуда', toFld:'Куда', departTimeFld:'Время отправления', arriveTimeFld:'Время прибытия',
+  distanceFld:'Расстояние (мили)', speedFld:'Скорость (пусто = скорость яхты)', hourAbbr:'ч', minAbbr:'мин',
+  libFolderless:'Без папки', libNewFolder:'Новая папка', libTargetFolder:'Целевая папка',
+  libPhotoBtn:'Фото', libDocBtn:'PDF / Документ', libEmpty:'БИБЛИОТЕКА ПУСТА',
+  libEmptySub:'Добавьте лоции, заметки, гиды по гаваням — как PDF или фото. 2-й капитан использует их как источники.',
+  libFolderEmpty:'В этой папке пока нет источников — выберите её при добавлении фото/PDF выше.',
+  libHint:'Откройте отдельную папку для каждой книги и загружайте туда её страницы. Когда вы называете 2-му капитану регион/стоянку, он сканирует подходящие папки без вопросов.',
+  folderCountSuffix:'папок', libAccessSuffix:'доступно 2-му капитану', notePlaceholder:'Заметка / тема…',
+  pageWordLower:'стр.',
+  archEmpty:'АРХИВ ПУСТ', archEmptySub:'Кнопка «Фото» открывает галерею, «Документ» — файлы.',
+  archCountSuffix:'файлов · на устройстве', newOrEdit:'НОВОЕ / РЕДАКТИРОВАНИЕ',
+  confirmDeleteRecord:'Удалить эту запись?', confirmDeleteDay:'Удалить этот день?',
+  confirmDeleteFile:'Удалить этот файл?', promptNewFolder:'Название новой папки (название книги):',
+  confirmDeleteFolder:'Удалить эту папку? Источники в ней не удаляются, просто останутся без папки.',
+  alertYachtNameRequired:'Укажите название яхты.', alertRouteNameRequired:'Укажите название маршрута.',
+  alertTitleRequired:'Укажите заголовок.',
+  confirmImportMode:'ОК = ЗАМЕНИТЬ ТЕКУЩИЕ ДАННЫЕ (данными из копии)\nОтмена = ОБЪЕДИНИТЬ С ТЕКУЩИМИ ДАННЫМИ (добавить, не заменяя)',
+  alertImportDone:'Импорт завершён. Примечание: фотографии не входят в резервную копию, их нужно добавить отдельно.',
+  alertImportError:'Не удалось прочитать файл: ', errInvalidFile:'неверный файл',
+  printCoverEyebrow:'КАПИТАНСКИЙ УГОЛОК · ПРОГРАММА ПЛАВАНИЯ', printDayWord:'ДЕНЬ', printDepart:'Отправление',
+  printArrive:'Прибытие', printDistance:'Расстояние', printDuration:'Ориент. время',
+  chatConsultLabel:'ЛИНИЯ СОВЕТА', chatTitle:'2-й капитан', chatClear:'Очистить',
+  chatPlaceholder:'Введите вопрос…', chatSend:'Отправить',
+  chatLibEmpty:'Библиотека пуста — добавьте источники, чтобы выбрать их здесь.',
+  chatHint:'Напишите название стоянки/региона — я автоматически просмотрю нужную книгу. Если нужна конкретная страница, выберите её ниже.',
+  chatKeyNeededTitle:'Для подключения 2-го капитана нужен API-ключ.',
+  chatKeyNeededBody:'Создайте ключ на platform.claude.com и вставьте его здесь. Ключ хранится только на этом устройстве.',
+  chatKeySave:'Сохранить ключ', chatCopy:'КОПИРОВАТЬ', chatShare:'ПОДЕЛИТЬСЯ', chatDownload:'СКАЧАТЬ',
+  chatSaveArchive:'СОХРАНИТЬ В АРХИВ', chatCopied:'СКОПИРОВАНО', chatSaved:'СОХРАНЕНО',
+  chatEmptyIntro:'Планирование маршрута, оценка погоды, информация о гаванях, текст брошюры — спрашивайте, что нужно.<br><br>Я вижу все разделы приложения: яхты, маршруты, брошюры, библиотеку и архив. Могу искать в интернете и читать источники из вашей библиотеки. Можно прикрепить фото или PDF.',
+  chatErrorPrefix:'Ошибка: ', chatErrorUnknown:'неизвестно', chatEmptyResponse:'(пустой ответ)',
+  chatConnFail:'Не удалось подключиться: ', attachSuffix:'вложение(й)', libSourceSuffix:'источник(ов) из библиотеки',
+  libSourceAutoSuffix:'источник(ов) из библиотеки добавлено автоматически', evalAttachedFallback:'Пожалуйста, оцени приложенные источники.',
+  aiDayPrefillPre:'— напишешь текст для следующего дня этой брошюры?', aiDayStopsFragment:'Стоянки маршрута: ',
+  aiDayPrefillPost:'Также предложи маршрут, расстояние и длительность.',
+  captainNotePrefix:'Заметка 2-го капитана — ', langLabel:'Язык',
+  lockEyebrow:'КОД ДОСТУПА', lockTitle:'Доступ только по приглашению',
+  lockBody:'Введите код доступа, полученный от капитана.', lockPlaceholder:'Код доступа',
+  lockButton:'Войти', lockError:'Неверный код, попробуйте снова.'
+},
+es:{
+  appName:'Gestión del Yate', appEyebrow:'RINCÓN DEL CAPITÁN', sidefoot:'DATOS GUARDADOS EN SU DISPOSITIVO',
+  logbookSuffix:'CUADERNO DE BITÁCORA', importBtn:'Importar', exportBtn:'Copia de seguridad',
+  secOverview:'Resumen', secOverviewShort:'Resumen',
+  secYachts:'Perfiles de Yates', secYachtsShort:'Yate',
+  secRoutes:'Biblioteca de Rutas', secRoutesShort:'Rutas',
+  secItins:'Itinerario / Folleto', secItinsShort:'Folleto',
+  secLibrary:'Biblioteca Marítima', secLibraryShort:'Biblioteca',
+  secFiles:'Fotos y Archivos', secFilesShort:'Archivo',
+  statYachts:'YATES', unitProfile:'perfiles', statRoutes:'RUTAS', unitRegistered:'guardadas',
+  statItins:'FOLLETOS', unitDoc:'documentos', statLibrary:'BIBLIOTECA', unitSource:'fuentes',
+  statFiles:'ARCHIVO', unitFile:'archivos', quickAccess:'ACCESO RÁPIDO',
+  edit:'Editar', save:'Guardar', open_:'Abrir', info:'Info',
+  yachtEmpty:'NO HAY PERFILES DE YATE', yachtAddBtn:'Añadir Yate', yachtName:'Nombre del Yate', yachtType:'Tipo',
+  yachtGuests:'Huéspedes', yachtSpeed:'Velocidad Crucero (kt)', yachtLoa:'Eslora (LOA m)', yachtPort:'Puerto Base',
+  yachtPhoto:'Foto', guestsLbl:'HUÉSPEDES', speedLbl:'VELOCIDAD', portLbl:'PUERTO',
+  routeAddBtn:'Añadir Ruta', routeEmpty:'LA BIBLIOTECA DE RUTAS ESTÁ VACÍA', routeName:'Nombre de la Ruta', routeRegion:'Región',
+  routeDays:'Número de Días', routeStops:'Paradas (separadas por comas)', dayWordShort:'DÍAS',
+  itinAddBtn:'Añadir Folleto', itinEmpty:'AÚN NO HAY FOLLETOS', noYacht:'sin yate', noDate:'sin fecha',
+  daysWord:'días', backToItins:'← Folletos', aiWriteDay:'Escribir Día con el 2º Capitán', addDay:'Añadir Día',
+  printBtn:'PDF / Imprimir', brochureLbl:'FOLLETO', cruiseSpeedPrefix:'velocidad crucero', noDaysYet:'AÚN NO SE HAN AÑADIDO DÍAS',
+  itinTitle:'Título', itinYacht:'Yate', itinRoute:'Ruta', selectPlaceholder:'Seleccionar…',
+  itinDates:'Fechas', itinIntro:'Texto de Introducción (portada)',
+  dayNoTitle:'Sin título', departLbl:'SALIDA', arriveLbl:'LLEGADA', distanceLbl:'DISTANCIA', durationLbl:'DURACIÓN',
+  addImage:'Imagen', dayTitleFld:'Título del Día', dayDateFld:'Fecha', dayNarrative:'Narrativa',
+  fromFld:'Desde', toFld:'Hasta', departTimeFld:'Hora de Salida', arriveTimeFld:'Hora de Llegada',
+  distanceFld:'Distancia (mn)', speedFld:'Velocidad (vacío = velocidad del yate)', hourAbbr:'h', minAbbr:'m',
+  libFolderless:'Sin Carpeta', libNewFolder:'Nueva Carpeta', libTargetFolder:'Carpeta de Destino',
+  libPhotoBtn:'Foto', libDocBtn:'PDF / Documento', libEmpty:'LA BIBLIOTECA ESTÁ VACÍA',
+  libEmptySub:'Añada derroteros, notas de navegación, guías de puertos — en PDF o foto. El 2º Capitán los usa como fuentes.',
+  libFolderEmpty:'Esta carpeta aún no tiene fuentes — selecciónela al añadir una imagen/PDF arriba.',
+  libHint:'Abra una carpeta para cada libro y suba allí sus páginas. Cuando le des al 2º Capitán una región/parada, escaneará las carpetas coincidentes sin preguntar.',
+  folderCountSuffix:'carpetas', libAccessSuffix:'accesible para el 2º Capitán', notePlaceholder:'Nota / tema…',
+  pageWordLower:'páginas',
+  archEmpty:'EL ARCHIVO ESTÁ VACÍO', archEmptySub:'El botón Foto abre su galería, el botón Documento abre Archivos.',
+  archCountSuffix:'archivos · en su dispositivo', newOrEdit:'NUEVO / EDITAR',
+  confirmDeleteRecord:'¿Eliminar este registro?', confirmDeleteDay:'¿Eliminar este día?',
+  confirmDeleteFile:'¿Eliminar este archivo?', promptNewFolder:'Nombre de la nueva carpeta (el título del libro):',
+  confirmDeleteFolder:'¿Eliminar esta carpeta? Sus fuentes no se eliminarán, solo quedarán sin carpeta.',
+  alertYachtNameRequired:'El nombre del yate es obligatorio.', alertRouteNameRequired:'El nombre de la ruta es obligatorio.',
+  alertTitleRequired:'El título es obligatorio.',
+  confirmImportMode:'Aceptar = SOBRESCRIBIR DATOS ACTUALES (reemplazar con la copia)\nCancelar = FUSIONAR CON DATOS ACTUALES (añadir, sin sobrescribir)',
+  alertImportDone:'Importación completa. Nota: las fotos no se incluyen en la copia de seguridad y deben añadirse por separado.',
+  alertImportError:'No se pudo leer el archivo: ', errInvalidFile:'archivo no válido',
+  printCoverEyebrow:'RINCÓN DEL CAPITÁN · PROGRAMA DE NAVEGACIÓN', printDayWord:'DÍA', printDepart:'Salida',
+  printArrive:'Llegada', printDistance:'Distancia', printDuration:'Duración Est.',
+  chatConsultLabel:'LÍNEA DE CONSULTA', chatTitle:'2º Capitán', chatClear:'Limpiar',
+  chatPlaceholder:'Escriba su pregunta…', chatSend:'Enviar',
+  chatLibEmpty:'La biblioteca está vacía — añada fuentes para seleccionarlas aquí.',
+  chatHint:'Si mencionas el nombre de una parada/región, escanearé el libro correspondiente automáticamente. Elige una página concreta abajo si quieres que la revise.',
+  chatKeyNeededTitle:'Se necesita una clave API para conectar al 2º Capitán.',
+  chatKeyNeededBody:'Cree una clave en platform.claude.com y péguela aquí. La clave se guarda solo en este dispositivo.',
+  chatKeySave:'Guardar Clave', chatCopy:'COPIAR', chatShare:'COMPARTIR', chatDownload:'DESCARGAR',
+  chatSaveArchive:'GUARDAR EN ARCHIVO', chatCopied:'COPIADO', chatSaved:'GUARDADO',
+  chatEmptyIntro:'Planificación de rutas, evaluación del clima, información portuaria, texto para folletos — pregunte lo que necesite.<br><br>Puedo ver todas las pestañas de la app: yates, rutas, folletos, biblioteca y archivo. Puedo buscar en internet y leer las fuentes de su biblioteca. También puede adjuntar fotos o PDFs.',
+  chatErrorPrefix:'Error: ', chatErrorUnknown:'desconocido', chatEmptyResponse:'(respuesta vacía)',
+  chatConnFail:'No se pudo conectar: ', attachSuffix:'adjunto(s)', libSourceSuffix:'fuente(s) de biblioteca',
+  libSourceAutoSuffix:'fuente(s) de biblioteca añadidas automáticamente', evalAttachedFallback:'Por favor evalúa las fuentes adjuntas.',
+  aiDayPrefillPre:'— ¿podrías escribir el texto para el próximo día de este folleto?', aiDayStopsFragment:'Paradas de la ruta: ',
+  aiDayPrefillPost:'Sugiere también la ruta, distancia y duración.',
+  captainNotePrefix:'Nota del 2º Capitán — ', langLabel:'Idioma',
+  lockEyebrow:'CÓDIGO DE ACCESO', lockTitle:'Esta app es solo por invitación',
+  lockBody:'Introduzca el código de acceso que recibió del Capitán.', lockPlaceholder:'Código de acceso',
+  lockButton:'Entrar', lockError:'Código incorrecto, inténtelo de nuevo.'
+},
+it:{
+  appName:'Gestione Yacht', appEyebrow:"ANGOLO DEL CAPITANO", sidefoot:'DATI SALVATI SUL DISPOSITIVO',
+  logbookSuffix:'GIORNALE DI BORDO', importBtn:'Importa', exportBtn:'Backup',
+  secOverview:'Panoramica', secOverviewShort:'Panoramica',
+  secYachts:'Profili Yacht', secYachtsShort:'Yacht',
+  secRoutes:'Libreria Rotte', secRoutesShort:'Rotte',
+  secItins:'Itinerario / Brochure', secItinsShort:'Brochure',
+  secLibrary:'Biblioteca Marittima', secLibraryShort:'Biblioteca',
+  secFiles:'Foto e File', secFilesShort:'Archivio',
+  statYachts:'YACHT', unitProfile:'profili', statRoutes:'ROTTE', unitRegistered:'salvate',
+  statItins:'BROCHURE', unitDoc:'documenti', statLibrary:'BIBLIOTECA', unitSource:'fonti',
+  statFiles:'ARCHIVIO', unitFile:'file', quickAccess:'ACCESSO RAPIDO',
+  edit:'Modifica', save:'Salva', open_:'Apri', info:'Info',
+  yachtEmpty:'NESSUN PROFILO YACHT', yachtAddBtn:'Aggiungi Yacht', yachtName:'Nome Yacht', yachtType:'Tipo',
+  yachtGuests:'Ospiti', yachtSpeed:'Velocità di Crociera (kt)', yachtLoa:'Lunghezza (LOA m)', yachtPort:'Porto Base',
+  yachtPhoto:'Foto', guestsLbl:'OSPITI', speedLbl:'VELOCITÀ', portLbl:'PORTO',
+  routeAddBtn:'Aggiungi Rotta', routeEmpty:'LIBRERIA ROTTE VUOTA', routeName:'Nome Rotta', routeRegion:'Regione',
+  routeDays:'Numero di Giorni', routeStops:'Tappe (separate da virgola)', dayWordShort:'GIORNI',
+  itinAddBtn:'Aggiungi Brochure', itinEmpty:'NESSUNA BROCHURE ANCORA', noYacht:'nessuno yacht', noDate:'nessuna data',
+  daysWord:'giorni', backToItins:'← Brochure', aiWriteDay:'Scrivi Giorno col 2° Capitano', addDay:'Aggiungi Giorno',
+  printBtn:'PDF / Stampa', brochureLbl:'BROCHURE', cruiseSpeedPrefix:'velocità di crociera', noDaysYet:'NESSUN GIORNO ANCORA AGGIUNTO',
+  itinTitle:'Titolo', itinYacht:'Yacht', itinRoute:'Rotta', selectPlaceholder:'Seleziona…',
+  itinDates:'Date', itinIntro:'Testo Introduttivo (copertina)',
+  dayNoTitle:'Senza titolo', departLbl:'PARTENZA', arriveLbl:'ARRIVO', distanceLbl:'DISTANZA', durationLbl:'DURATA',
+  addImage:'Immagine', dayTitleFld:'Titolo del Giorno', dayDateFld:'Data', dayNarrative:'Racconto',
+  fromFld:'Da', toFld:'A', departTimeFld:'Ora di Partenza', arriveTimeFld:'Ora di Arrivo',
+  distanceFld:'Distanza (nm)', speedFld:'Velocità (vuoto = velocità yacht)', hourAbbr:'h', minAbbr:'m',
+  libFolderless:'Senza Cartella', libNewFolder:'Nuova Cartella', libTargetFolder:'Cartella di Destinazione',
+  libPhotoBtn:'Foto', libDocBtn:'PDF / Documento', libEmpty:'BIBLIOTECA VUOTA',
+  libEmptySub:'Aggiungi portolani, note di navigazione, guide portuali — come PDF o foto. Il 2° Capitano li usa come fonti.',
+  libFolderEmpty:'Questa cartella non ha ancora fonti — selezionala mentre aggiungi un\'immagine/PDF sopra.',
+  libHint:'Apri una cartella per ogni libro e caricaci le sue pagine. Quando dai al 2° Capitano una regione/tappa, scansiona le cartelle corrispondenti senza chiedere.',
+  folderCountSuffix:'cartelle', libAccessSuffix:'accessibile al 2° Capitano', notePlaceholder:'Nota / argomento…',
+  pageWordLower:'pagine',
+  archEmpty:'ARCHIVIO VUOTO', archEmptySub:'Il pulsante Foto apre la galleria, il pulsante Documento apre i File.',
+  archCountSuffix:'file · sul dispositivo', newOrEdit:'NUOVO / MODIFICA',
+  confirmDeleteRecord:'Eliminare questo record?', confirmDeleteDay:'Eliminare questo giorno?',
+  confirmDeleteFile:'Eliminare questo file?', promptNewFolder:'Nome della nuova cartella (il titolo del libro):',
+  confirmDeleteFolder:'Eliminare questa cartella? Le fonti al suo interno non verranno eliminate, resteranno senza cartella.',
+  alertYachtNameRequired:'Il nome dello yacht è obbligatorio.', alertRouteNameRequired:'Il nome della rotta è obbligatorio.',
+  alertTitleRequired:'Il titolo è obbligatorio.',
+  confirmImportMode:'OK = SOVRASCRIVI I DATI ATTUALI (sostituisci con il backup)\nAnnulla = UNISCI AI DATI ATTUALI (aggiungi, senza sovrascrivere)',
+  alertImportDone:'Importazione completata. Nota: le foto non sono incluse nel backup e vanno aggiunte separatamente.',
+  alertImportError:'Impossibile leggere il file: ', errInvalidFile:'file non valido',
+  printCoverEyebrow:'ANGOLO DEL CAPITANO · PROGRAMMA DI NAVIGAZIONE', printDayWord:'GIORNO', printDepart:'Partenza',
+  printArrive:'Arrivo', printDistance:'Distanza', printDuration:'Durata Stimata',
+  chatConsultLabel:'LINEA DI CONSULENZA', chatTitle:'2° Capitano', chatClear:'Cancella',
+  chatPlaceholder:'Scrivi la tua domanda…', chatSend:'Invia',
+  chatLibEmpty:'La biblioteca è vuota — aggiungi fonti per selezionarle qui.',
+  chatHint:'Se scrivi il nome di una tappa/regione, scansionerò automaticamente il libro corrispondente. Scegli una pagina specifica qui sotto se vuoi che la esamini.',
+  chatKeyNeededTitle:'Serve una chiave API per collegare il 2° Capitano.',
+  chatKeyNeededBody:'Crea una chiave su platform.claude.com e incollala qui. La chiave viene salvata solo su questo dispositivo.',
+  chatKeySave:'Salva Chiave', chatCopy:'COPIA', chatShare:'CONDIVIDI', chatDownload:'SCARICA',
+  chatSaveArchive:'SALVA NELL\'ARCHIVIO', chatCopied:'COPIATO', chatSaved:'SALVATO',
+  chatEmptyIntro:'Pianificazione rotte, valutazione meteo, informazioni sui porti, testo per brochure — chiedi ciò che ti serve.<br><br>Posso vedere tutte le schede dell\'app: yacht, rotte, brochure, biblioteca e archivio. Posso cercare sul web e leggere le fonti della tua biblioteca. Puoi allegare anche foto o PDF.',
+  chatErrorPrefix:'Errore: ', chatErrorUnknown:'sconosciuto', chatEmptyResponse:'(risposta vuota)',
+  chatConnFail:'Connessione non riuscita: ', attachSuffix:'allegato/i', libSourceSuffix:'fonte/i dalla biblioteca',
+  libSourceAutoSuffix:'fonte/i dalla biblioteca aggiunte automaticamente', evalAttachedFallback:'Valuta le fonti allegate.',
+  aiDayPrefillPre:'— potresti scrivere il testo per il prossimo giorno di questa brochure?', aiDayStopsFragment:'Tappe della rotta: ',
+  aiDayPrefillPost:'Suggerisci anche rotta, distanza e durata.',
+  captainNotePrefix:'Nota del 2° Capitano — ', langLabel:'Lingua',
+  lockEyebrow:'CODICE DI ACCESSO', lockTitle:'App riservata su invito',
+  lockBody:'Inserisci il codice di accesso ricevuto dal Capitano.', lockPlaceholder:'Codice di accesso',
+  lockButton:'Entra', lockError:'Codice errato, riprova.'
+}
+};
+function t(key){ return (T[LANG]&&T[LANG][key]!==undefined)?T[LANG][key]:(T.tr[key]!==undefined?T.tr[key]:key); }
+function applyStaticLangText(){
+  document.documentElement.lang=LANG;
+  document.title=t('appName')+' — '+t('appEyebrow');
+  const mt=document.querySelector('meta[name="apple-mobile-web-app-title"]');if(mt)mt.setAttribute('content',t('appName'));
+  const brandEyebrow=document.querySelector('.brand .eyebrow');if(brandEyebrow){
+    const svgEl=brandEyebrow.querySelector('svg');
+    brandEyebrow.innerHTML='';if(svgEl)brandEyebrow.appendChild(svgEl);
+    brandEyebrow.appendChild(document.createTextNode(' '+t('appEyebrow')));
+  }
+  const brandH1=document.querySelector('.brand h1');if(brandH1)brandH1.textContent=t('appName');
+  const sf=document.querySelector('.sidefoot');if(sf)sf.textContent=t('sidefoot');
+  const il=document.getElementById('importLbl');if(il)il.textContent=t('importBtn');
+  const eb=document.getElementById('exportBtn');if(eb)eb.textContent=t('exportBtn');
+  const ls=document.getElementById('langSel');
+  if(ls){
+    ls.innerHTML=LANGS.map(l=>`<option value="${l}" ${l===LANG?'selected':''}>${LANG_NAMES[l]}</option>`).join('');
+    ls.onchange=()=>{LANG=ls.value;localStorage.setItem('yy_lang',LANG);applyStaticLangText();render();
+      if(sheet.classList.contains('on')){drawMsgs();drawCtx();drawPending();}};
+  }
+  const le=document.getElementById('lockEyebrow');if(le)le.textContent=t('lockEyebrow');
+  const lt=document.getElementById('lockTitle');if(lt)lt.textContent=t('lockTitle');
+  const lb=document.getElementById('lockBody');if(lb)lb.textContent=t('lockBody');
+  const li=document.getElementById('lockInput');if(li)li.placeholder=t('lockPlaceholder');
+  const lbtn=document.getElementById('lockBtn');if(lbtn)lbtn.textContent=t('lockButton');
+  const lerr=document.getElementById('lockErr');if(lerr)lerr.textContent=t('lockError');
+}
+
 const I={
   compass:'<circle cx="12" cy="12" r="10"/><polygon points="16.2 7.8 14.1 14.1 7.8 16.2 9.9 9.9 16.2 7.8"/>',
   ship:'<path d="M2 20a2.4 2.4 0 0 0 2-1 2.4 2.4 0 0 1 4 0 2.4 2.4 0 0 0 4 0 2.4 2.4 0 0 1 4 0 2.4 2.4 0 0 0 4 0"/><path d="M4 18l-2-6h20l-2 6"/><path d="M12 12V4"/><path d="M12 4l6 3-6 2"/>',
@@ -271,7 +667,7 @@ const idbPut=(s,v,k)=>new Promise(r=>{const q=k!==undefined?st(s,'readwrite').pu
 const idbDel=(s,k)=>new Promise(r=>{const q=st(s,'readwrite').delete(k);q.onsuccess=()=>r(1);q.onerror=()=>r(0)});
 const idbAll=s=>new Promise(r=>{const q=st(s,'readonly').getAll();q.onsuccess=()=>r(q.result||[]);q.onerror=()=>r([])});
 
-let D={yachts:[],routes:[],itins:[]};
+let D={yachts:[],routes:[],itins:[],libFolders:[]};
 let FILES=[];                 // kind: 'archive' | 'library'
 const arch=()=>FILES.filter(f=>f.kind!=='library');
 const lib=()=>FILES.filter(f=>f.kind==='library');
@@ -284,52 +680,57 @@ async function loadFiles(){
   FILES=recs.map(r=>({...r,url:r.blob?URL.createObjectURL(r.blob):null}));
   FILES.sort((a,b)=>(b.added||0)-(a.added||0));
 }
-async function addFiles(list,kind){
+async function addFiles(list,kind,folder){
   for(const f of list){
     await idbPut('files',{id:uid(),name:f.name||('dosya-'+uid()),type:f.type||'application/octet-stream',
-      blob:f,kind,added:Date.now(),note:''});
+      blob:f,kind,added:Date.now(),note:'',folder:folder||null});
   }
   await loadFiles();
+}
+async function moveFileFolder(id,folder){
+  const rec=await idbGet('files',id);if(!rec)return;
+  rec.folder=folder||null;await idbPut('files',rec);await loadFiles();
 }
 const blobToB64=b=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(b)});
 
 /* ---------- bölümler ---------- */
-const SECTIONS=[
-  {id:'overview',label:'Genel Bakış',short:'Bakış',brg:'000°',icon:I.compass},
-  {id:'yachts',label:'Tekne Profilleri',short:'Tekne',brg:'060°',icon:I.ship},
-  {id:'routes',label:'Rota Kütüphanesi',short:'Rota',brg:'120°',icon:I.map},
-  {id:'itins',label:'İtinerary / Broşür',short:'Broşür',brg:'180°',icon:I.book},
-  {id:'library',label:'Denizcilik Kütüphanesi',short:'Kütüphane',brg:'240°',icon:I.library},
-  {id:'files',label:'Fotoğraf & Dosya',short:'Arşiv',brg:'300°',icon:I.folder}
-];
+function SECTIONS(){return [
+  {id:'overview',label:t('secOverview'),short:t('secOverviewShort'),brg:'000°',icon:I.compass},
+  {id:'yachts',label:t('secYachts'),short:t('secYachtsShort'),brg:'060°',icon:I.ship},
+  {id:'routes',label:t('secRoutes'),short:t('secRoutesShort'),brg:'120°',icon:I.map},
+  {id:'itins',label:t('secItins'),short:t('secItinsShort'),brg:'180°',icon:I.book},
+  {id:'library',label:t('secLibrary'),short:t('secLibraryShort'),brg:'240°',icon:I.library},
+  {id:'files',label:t('secFiles'),short:t('secFilesShort'),brg:'300°',icon:I.folder}
+];}
 let cur='overview', editing=null, openItin=null;
 
 function drawNav(){
-  document.getElementById('sidenav').innerHTML=SECTIONS.map(s=>`
+  const SECS=SECTIONS();
+  document.getElementById('sidenav').innerHTML=SECS.map(s=>`
     <button class="navbtn ${s.id===cur?'on':''}" data-go="${s.id}">
       ${svg(s.icon,16,s.id===cur?'#C89B5C':'#5C7085')}
       <span><span style="font-size:14px">${s.label}</span><span class="brg mono">${s.brg}</span></span>
     </button>`).join('');
-  document.getElementById('tabbar').innerHTML=SECTIONS.map(s=>`
+  document.getElementById('tabbar').innerHTML=SECS.map(s=>`
     <button class="${s.id===cur?'on':''}" data-go="${s.id}">${svg(s.icon,18)}<span>${s.short}</span></button>`).join('');
-  const s=SECTIONS.find(x=>x.id===cur);
-  document.getElementById('topbrg').textContent=s.brg+' — SEYİR DEFTERİ';
+  const s=SECS.find(x=>x.id===cur);
+  document.getElementById('topbrg').textContent=s.brg+' — '+t('logbookSuffix');
   document.getElementById('toptitle').textContent=s.label;
 }
 
 /* ---------- genel bakış ---------- */
 function vOverview(){
-  const quick=SECTIONS.filter(s=>s.id!=='overview').map(s=>`
+  const quick=SECTIONS().filter(s=>s.id!=='overview').map(s=>`
     <button class="card" data-go="${s.id}" style="display:flex;align-items:center;gap:9px;text-align:left">
       ${svg(s.icon,15,'#C89B5C')}<span style="font-size:13.5px">${s.label}</span></button>`).join('');
   return `<div class="stats">
-    <div class="card"><div class="lbl">TEKNE</div><div class="bignum">${D.yachts.length}<span>profil</span></div></div>
-    <div class="card"><div class="lbl">ROTA</div><div class="bignum">${D.routes.length}<span>kayıtlı</span></div></div>
-    <div class="card"><div class="lbl">BROŞÜR</div><div class="bignum">${D.itins.length}<span>doküman</span></div></div>
-    <div class="card"><div class="lbl">KÜTÜPHANE</div><div class="bignum">${lib().length}<span>kaynak</span></div></div>
-    <div class="card"><div class="lbl">ARŞİV</div><div class="bignum">${arch().length}<span>dosya</span></div></div>
+    <div class="card"><div class="lbl">${t('statYachts')}</div><div class="bignum">${D.yachts.length}<span>${t('unitProfile')}</span></div></div>
+    <div class="card"><div class="lbl">${t('statRoutes')}</div><div class="bignum">${D.routes.length}<span>${t('unitRegistered')}</span></div></div>
+    <div class="card"><div class="lbl">${t('statItins')}</div><div class="bignum">${D.itins.length}<span>${t('unitDoc')}</span></div></div>
+    <div class="card"><div class="lbl">${t('statLibrary')}</div><div class="bignum">${lib().length}<span>${t('unitSource')}</span></div></div>
+    <div class="card"><div class="lbl">${t('statFiles')}</div><div class="bignum">${arch().length}<span>${t('unitFile')}</span></div></div>
   </div>
-  <div class="card"><div class="lbl">HIZLI ERİŞİM</div><div class="grid2" style="margin-top:11px;gap:9px">${quick}</div></div>`;
+  <div class="card"><div class="lbl">${t('quickAccess')}</div><div class="grid2" style="margin-top:11px;gap:9px">${quick}</div></div>`;
 }
 
 /* ---------- tekneler ---------- */
@@ -341,45 +742,45 @@ function vYachts(){
       <div class="row" style="margin-bottom:10px;align-items:flex-start">
         <div><div class="itemname">${esc(y.name)}</div><div class="meta">${esc(y.type||'')}</div></div>
         <div style="display:flex;gap:4px">
-          <button class="btn ghost sm" data-edit="yacht" data-id="${y.id}">Düzenle</button>
+          <button class="btn ghost sm" data-edit="yacht" data-id="${y.id}">${t('edit')}</button>
           <button class="del" data-del="yacht" data-id="${y.id}">${svg(I.trash,15)}</button></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        <div><div class="lbl">MİSAFİR</div><div style="font-size:13px;color:var(--muted);margin-top:3px">${esc(y.guests||'—')}</div></div>
-        <div><div class="lbl">HIZ</div><div style="font-size:13px;color:var(--muted);margin-top:3px">${esc(y.speed||'—')} kt</div></div>
-        <div><div class="lbl">LİMAN</div><div style="font-size:13px;color:var(--muted);margin-top:3px">${esc(y.port||'—')}</div></div>
-      </div></div>`).join('')}</div>`:`<div class="empty">TEKNE PROFİLİ YOK</div>`;
-  return head(D.yachts.length+' profil','yacht','Tekne Ekle')+form+list;
+        <div><div class="lbl">${t('guestsLbl')}</div><div style="font-size:13px;color:var(--muted);margin-top:3px">${esc(y.guests||'—')}</div></div>
+        <div><div class="lbl">${t('speedLbl')}</div><div style="font-size:13px;color:var(--muted);margin-top:3px">${esc(y.speed||'—')} kt</div></div>
+        <div><div class="lbl">${t('portLbl')}</div><div style="font-size:13px;color:var(--muted);margin-top:3px">${esc(y.port||'—')}</div></div>
+      </div></div>`).join('')}</div>`:`<div class="empty">${t('yachtEmpty')}</div>`;
+  return head(`${D.yachts.length} ${t('unitProfile')}`,'yacht',t('yachtAddBtn'))+form+list;
 }
 function fYacht(v){return `<div class="card" style="margin-bottom:15px">${fHead()}
-  <div class="grid2"><label class="f"><span>Tekne Adı</span><input class="f" id="f_name" value="${esc(v.name||'')}" placeholder="M/Y MEIRA"></label>
-  <label class="f"><span>Tip</span><input class="f" id="f_type" value="${esc(v.type||'')}" placeholder="Motor Sailing Yacht"></label></div>
-  <div class="grid2"><label class="f"><span>Misafir</span><input class="f" id="f_guests" value="${esc(v.guests||'')}" placeholder="12"></label>
-  <label class="f"><span>Seyir Hızı (kt)</span><input class="f" id="f_speed" value="${esc(v.speed||'')}" placeholder="11.5"></label></div>
-  <div class="grid2"><label class="f"><span>Boy (LOA m)</span><input class="f" id="f_loa" value="${esc(v.loa||'')}"></label>
-  <label class="f"><span>Ana Liman</span><input class="f" id="f_port" value="${esc(v.port||'')}" placeholder="Rhodes"></label></div>
-  <label class="f"><span>Fotoğraf</span><input type="file" accept="image/*" id="f_photo" class="f"></label>
+  <div class="grid2"><label class="f"><span>${t('yachtName')}</span><input class="f" id="f_name" value="${esc(v.name||'')}" placeholder="M/Y MEIRA"></label>
+  <label class="f"><span>${t('yachtType')}</span><input class="f" id="f_type" value="${esc(v.type||'')}" placeholder="Motor Sailing Yacht"></label></div>
+  <div class="grid2"><label class="f"><span>${t('yachtGuests')}</span><input class="f" id="f_guests" value="${esc(v.guests||'')}" placeholder="12"></label>
+  <label class="f"><span>${t('yachtSpeed')}</span><input class="f" id="f_speed" value="${esc(v.speed||'')}" placeholder="11.5"></label></div>
+  <div class="grid2"><label class="f"><span>${t('yachtLoa')}</span><input class="f" id="f_loa" value="${esc(v.loa||'')}"></label>
+  <label class="f"><span>${t('yachtPort')}</span><input class="f" id="f_port" value="${esc(v.port||'')}" placeholder="Rhodes"></label></div>
+  <label class="f"><span>${t('yachtPhoto')}</span><input type="file" accept="image/*" id="f_photo" class="f"></label>
   ${v.photo?`<img class="thumb" src="${v.photo}" style="max-width:200px;margin-bottom:11px">`:''}
-  <button class="btn" id="saveBtn">Kaydet</button></div>`}
+  <button class="btn" id="saveBtn">${t('save')}</button></div>`}
 
 /* ---------- rotalar ---------- */
 function vRoutes(){
   const form=editing?.t==='route'?fRoute(editing.v):'';
   const list=D.routes.length?`<div class="stack">${D.routes.map(r=>`
     <div class="card"><div class="row" style="margin-bottom:0;align-items:flex-start">
-      <div><div class="itemname">${esc(r.name)}</div><div class="meta">${esc(r.region||'—')} · ${esc(r.days||'?')} GÜN</div></div>
-      <div style="display:flex;gap:4px"><button class="btn ghost sm" data-edit="route" data-id="${r.id}">Düzenle</button>
+      <div><div class="itemname">${esc(r.name)}</div><div class="meta">${esc(r.region||'—')} · ${esc(r.days||'?')} ${t('dayWordShort')}</div></div>
+      <div style="display:flex;gap:4px"><button class="btn ghost sm" data-edit="route" data-id="${r.id}">${t('edit')}</button>
       <button class="del" data-del="route" data-id="${r.id}">${svg(I.trash,15)}</button></div></div>
     ${r.stops?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">${r.stops.split(',').filter(s=>s.trim()).map(s=>`<span class="chip">${esc(s.trim())}</span>`).join('')}</div>`:''}
-    </div>`).join('')}</div>`:`<div class="empty">ROTA KÜTÜPHANESİ BOŞ</div>`;
-  return head(D.routes.length+' rota','route','Rota Ekle')+form+list;
+    </div>`).join('')}</div>`:`<div class="empty">${t('routeEmpty')}</div>`;
+  return head(`${D.routes.length} ${t('unitRegistered')}`,'route',t('routeAddBtn'))+form+list;
 }
 function fRoute(v){return `<div class="card" style="margin-bottom:15px">${fHead()}
-  <div class="grid2"><label class="f"><span>Rota Adı</span><input class="f" id="f_name" value="${esc(v.name||'')}"></label>
-  <label class="f"><span>Bölge</span><input class="f" id="f_region" value="${esc(v.region||'')}"></label></div>
-  <label class="f"><span>Gün Sayısı</span><input class="f" id="f_days" value="${esc(v.days||'')}"></label>
-  <label class="f"><span>Duraklar (virgülle)</span><textarea class="f" id="f_stops">${esc(v.stops||'')}</textarea></label>
-  <button class="btn" id="saveBtn">Kaydet</button></div>`}
+  <div class="grid2"><label class="f"><span>${t('routeName')}</span><input class="f" id="f_name" value="${esc(v.name||'')}"></label>
+  <label class="f"><span>${t('routeRegion')}</span><input class="f" id="f_region" value="${esc(v.region||'')}"></label></div>
+  <label class="f"><span>${t('routeDays')}</span><input class="f" id="f_days" value="${esc(v.days||'')}"></label>
+  <label class="f"><span>${t('routeStops')}</span><textarea class="f" id="f_stops">${esc(v.stops||'')}</textarea></label>
+  <button class="btn" id="saveBtn">${t('save')}</button></div>`}
 
 /* ---------- itinerary ---------- */
 function vItins(){
@@ -389,44 +790,44 @@ function vItins(){
     const y=D.yachts.find(v=>v.id===it.yachtId);
     return `<div class="card"><div class="row" style="margin-bottom:0;align-items:flex-start">
       <div><div class="itemname">${esc(it.title)}</div>
-      <div class="meta">${esc(y?y.name:'tekne yok')} · ${esc(it.dates||'tarih yok')} · ${(it.days||[]).length} gün</div></div>
+      <div class="meta">${esc(y?y.name:t('noYacht'))} · ${esc(it.dates||t('noDate'))} · ${(it.days||[]).length} ${t('daysWord')}</div></div>
       <div style="display:flex;gap:4px">
-        <button class="btn sm" data-open="${it.id}">Aç</button>
-        <button class="btn ghost sm" data-edit="itin" data-id="${it.id}">Bilgi</button>
+        <button class="btn sm" data-open="${it.id}">${t('open_')}</button>
+        <button class="btn ghost sm" data-edit="itin" data-id="${it.id}">${t('info')}</button>
         <button class="del" data-del="itin" data-id="${it.id}">${svg(I.trash,15)}</button></div>
-    </div></div>`}).join('')}</div>`:`<div class="empty">HENÜZ BROŞÜR YOK</div>`;
-  return head(D.itins.length+' broşür','itin','Broşür Ekle')+form+list;
+    </div></div>`}).join('')}</div>`:`<div class="empty">${t('itinEmpty')}</div>`;
+  return head(`${D.itins.length} ${t('unitDoc')}`,'itin',t('itinAddBtn'))+form+list;
 }
 function fItin(v){
   const yo=D.yachts.map(y=>`<option value="${y.id}" ${v.yachtId===y.id?'selected':''}>${esc(y.name)}</option>`).join('');
   const ro=D.routes.map(r=>`<option value="${r.id}" ${v.routeId===r.id?'selected':''}>${esc(r.name)}</option>`).join('');
   return `<div class="card" style="margin-bottom:15px">${fHead()}
-    <label class="f"><span>Başlık</span><input class="f" id="f_title" value="${esc(v.title||'')}" placeholder="Dodecanese Summer Cruise 2026"></label>
+    <label class="f"><span>${t('itinTitle')}</span><input class="f" id="f_title" value="${esc(v.title||'')}" placeholder="Dodecanese Summer Cruise 2026"></label>
     <div class="grid2">
-      <label class="f"><span>Tekne</span><select class="f" id="f_yachtId"><option value="">Seçin…</option>${yo}</select></label>
-      <label class="f"><span>Rota</span><select class="f" id="f_routeId"><option value="">Seçin…</option>${ro}</select></label></div>
-    <label class="f"><span>Tarihler</span><input class="f" id="f_dates" value="${esc(v.dates||'')}" placeholder="29 Jul – 08 Aug 2026"></label>
-    <label class="f"><span>Giriş Metni (kapak)</span><textarea class="f" id="f_intro">${esc(v.intro||'')}</textarea></label>
-    <button class="btn" id="saveBtn">Kaydet</button></div>`;
+      <label class="f"><span>${t('itinYacht')}</span><select class="f" id="f_yachtId"><option value="">${t('selectPlaceholder')}</option>${yo}</select></label>
+      <label class="f"><span>${t('itinRoute')}</span><select class="f" id="f_routeId"><option value="">${t('selectPlaceholder')}</option>${ro}</select></label></div>
+    <label class="f"><span>${t('itinDates')}</span><input class="f" id="f_dates" value="${esc(v.dates||'')}" placeholder="29 Jul – 08 Aug 2026"></label>
+    <label class="f"><span>${t('itinIntro')}</span><textarea class="f" id="f_intro">${esc(v.intro||'')}</textarea></label>
+    <button class="btn" id="saveBtn">${t('save')}</button></div>`;
 }
 
 function vItinDetail(it){
-  if(!it)return '<div class="empty">BULUNAMADI</div>';
+  if(!it)return `<div class="empty">${t('itinEmpty')}</div>`;
   const y=D.yachts.find(v=>v.id===it.yachtId);
   const days=(it.days||[]).map((d,i)=>dayCard(it,d,i)).join('');
   return `<div class="row">
-      <button class="btn ghost sm" id="backItin">← Broşürler</button>
+      <button class="btn ghost sm" id="backItin">${t('backToItins')}</button>
       <div style="display:flex;gap:6px">
-        <button class="btn ghost sm" data-adddayai="${it.id}">2. Kaptan ile Gün Yaz</button>
-        <button class="btn ghost sm" id="addDay">${svg(I.plus,13)} Gün Ekle</button>
-        <button class="btn" id="printBtn">PDF / Yazdır</button>
+        <button class="btn ghost sm" data-adddayai="${it.id}">${t('aiWriteDay')}</button>
+        <button class="btn ghost sm" id="addDay">${svg(I.plus,13)} ${t('addDay')}</button>
+        <button class="btn" id="printBtn">${t('printBtn')}</button>
       </div></div>
-    <div class="card"><div class="lbl">BROŞÜR</div>
+    <div class="card"><div class="lbl">${t('brochureLbl')}</div>
       <div class="itemname" style="margin-top:6px">${esc(it.title)}</div>
-      <div class="meta">${esc(y?y.name:'tekne yok')} · ${esc(it.dates||'')} · seyir hızı ${esc(y?.speed||'—')} kt</div>
+      <div class="meta">${esc(y?y.name:t('noYacht'))} · ${esc(it.dates||'')} · ${t('cruiseSpeedPrefix')} ${esc(y?.speed||'—')} kt</div>
       ${it.intro?`<p style="font-size:13.5px;color:var(--muted);margin-top:11px;line-height:1.65;white-space:pre-wrap">${esc(it.intro)}</p>`:''}
     </div>
-    ${days||'<div class="empty" style="margin-top:14px">HENÜZ GÜN EKLENMEDİ</div>'}`;
+    ${days||`<div class="empty" style="margin-top:14px">${t('noDaysYet')}</div>`}`;
 }
 
 function dayCard(it,d,i){
@@ -436,23 +837,23 @@ function dayCard(it,d,i){
     <div class="dayhead">
       <div style="display:flex;align-items:baseline;gap:10px">
         <span class="daynum">${String(i+1).padStart(2,'0')}</span>
-        <div><div class="itemname">${esc(d.title||'İsimsiz')}</div>
+        <div><div class="itemname">${esc(d.title||t('dayNoTitle'))}</div>
         <div class="meta">${esc(d.date||'')}</div></div>
       </div>
       <div style="display:flex;gap:4px">
-        <button class="btn ghost sm" data-editday="${d.id}">Düzenle</button>
+        <button class="btn ghost sm" data-editday="${d.id}">${t('edit')}</button>
         <button class="del" data-delday="${d.id}">${svg(I.trash,14)}</button>
       </div>
     </div>
     ${d.narrative?`<p style="font-size:13.5px;line-height:1.7;color:var(--muted);margin-top:11px;white-space:pre-wrap">${esc(d.narrative)}</p>`:''}
     <div class="leg">
-      <div><div class="lbl">KALKIŞ</div><p>${esc(d.depart||'—')}<span style="font-size:10px;color:var(--dim);margin-left:4px">${esc(d.from||'')}</span></p></div>
-      <div><div class="lbl">VARIŞ</div><p>${esc(d.arrive||'—')}<span style="font-size:10px;color:var(--dim);margin-left:4px">${esc(d.to||'')}</span></p></div>
-      <div><div class="lbl">MESAFE</div><p>${esc(d.distance||'—')} nm</p></div>
-      <div><div class="lbl">SÜRE</div><p>${etaText(it,d)}</p></div>
+      <div><div class="lbl">${t('departLbl')}</div><p>${esc(d.depart||'—')}<span style="font-size:10px;color:var(--dim);margin-left:4px">${esc(d.from||'')}</span></p></div>
+      <div><div class="lbl">${t('arriveLbl')}</div><p>${esc(d.arrive||'—')}<span style="font-size:10px;color:var(--dim);margin-left:4px">${esc(d.to||'')}</span></p></div>
+      <div><div class="lbl">${t('distanceLbl')}</div><p>${esc(d.distance||'—')} nm</p></div>
+      <div><div class="lbl">${t('durationLbl')}</div><p>${etaText(it,d)}</p></div>
     </div>
     <div class="imgstrip">${imgs}
-      <label class="btn ghost sm" for="dayimg_${d.id}" style="height:64px;display:flex;align-items:center">${svg(I.plus,13)} Görsel</label>
+      <label class="btn ghost sm" for="dayimg_${d.id}" style="height:64px;display:flex;align-items:center">${svg(I.plus,13)} ${t('addImage')}</label>
       <input type="file" id="dayimg_${d.id}" data-dayimg="${d.id}" multiple accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0">
     </div>
   </div>`;
@@ -465,48 +866,74 @@ function etaHours(it,d){
 function etaText(it,d){
   const h=etaHours(it,d); if(h===null)return '—';
   const H=Math.floor(h), M=Math.round((h-H)*60);
-  return `~${H}s ${String(M).padStart(2,'0')}dk`;
+  return `~${H}${t('hourAbbr')} ${String(M).padStart(2,'0')}${t('minAbbr')}`;
 }
 function fDay(it,d){
   return `<div class="card" style="margin-top:12px">${fHead()}
     <div class="grid2">
-      <label class="f"><span>Gün Başlığı</span><input class="f" id="d_title" value="${esc(d.title||'')}" placeholder="Symi"></label>
-      <label class="f"><span>Tarih</span><input class="f" id="d_date" value="${esc(d.date||'')}" placeholder="30 Temmuz 2026"></label></div>
-    <label class="f"><span>Anlatı</span><textarea class="f" id="d_narrative" style="min-height:120px">${esc(d.narrative||'')}</textarea></label>
+      <label class="f"><span>${t('dayTitleFld')}</span><input class="f" id="d_title" value="${esc(d.title||'')}" placeholder="Symi"></label>
+      <label class="f"><span>${t('dayDateFld')}</span><input class="f" id="d_date" value="${esc(d.date||'')}" placeholder="30 Temmuz 2026"></label></div>
+    <label class="f"><span>${t('dayNarrative')}</span><textarea class="f" id="d_narrative" style="min-height:120px">${esc(d.narrative||'')}</textarea></label>
     <div class="grid2">
-      <label class="f"><span>Nereden</span><input class="f" id="d_from" value="${esc(d.from||'')}"></label>
-      <label class="f"><span>Nereye</span><input class="f" id="d_to" value="${esc(d.to||'')}"></label></div>
+      <label class="f"><span>${t('fromFld')}</span><input class="f" id="d_from" value="${esc(d.from||'')}"></label>
+      <label class="f"><span>${t('toFld')}</span><input class="f" id="d_to" value="${esc(d.to||'')}"></label></div>
     <div class="grid2">
-      <label class="f"><span>Kalkış Saati</span><input class="f" id="d_depart" value="${esc(d.depart||'')}" placeholder="08:00"></label>
-      <label class="f"><span>Varış Saati</span><input class="f" id="d_arrive" value="${esc(d.arrive||'')}" placeholder="11:00"></label></div>
+      <label class="f"><span>${t('departTimeFld')}</span><input class="f" id="d_depart" value="${esc(d.depart||'')}" placeholder="08:00"></label>
+      <label class="f"><span>${t('arriveTimeFld')}</span><input class="f" id="d_arrive" value="${esc(d.arrive||'')}" placeholder="11:00"></label></div>
     <div class="grid2">
-      <label class="f"><span>Mesafe (nm)</span><input class="f" id="d_distance" value="${esc(d.distance||'')}"></label>
-      <label class="f"><span>Hız (boş = tekne hızı)</span><input class="f" id="d_speed" value="${esc(d.speed||'')}"></label></div>
-    <button class="btn" id="saveDayBtn">Kaydet</button></div>`;
+      <label class="f"><span>${t('distanceFld')}</span><input class="f" id="d_distance" value="${esc(d.distance||'')}"></label>
+      <label class="f"><span>${t('speedFld')}</span><input class="f" id="d_speed" value="${esc(d.speed||'')}"></label></div>
+    <button class="btn" id="saveDayBtn">${t('save')}</button></div>`;
 }
 
 /* ---------- kütüphane ---------- */
-function vLibrary(){
-  const items=lib();
-  const list=items.length?`<div class="filegrid">${items.map(f=>`
-    <div class="filecard">
+function folderOptions(selected){
+  return `<option value="">${t('libFolderless')}</option>`+D.libFolders.map(name=>
+    `<option value="${esc(name)}" ${selected===name?'selected':''}>${esc(name)}</option>`).join('');
+}
+function fileCard(f){
+  return `<div class="filecard">
       <button class="x" data-delfile="${f.id}">${svg(I.x,12)}</button>
       ${f.type.startsWith('image/')?`<img class="thumb" style="border:none;border-radius:0;border-bottom:1px solid var(--line)" src="${f.url}">`
         :`<div class="docicon">${svg(I.file,26,'#5C7085')}</div>`}
       <div class="cap">${esc(f.name)}</div>
       <input class="f" style="font-size:11px;padding:5px 7px;border-radius:0;border:none;border-top:1px solid var(--line)"
-        data-note="${f.id}" value="${esc(f.note||'')}" placeholder="Not / konu…">
-    </div>`).join('')}</div>`:`<div class="empty">KÜTÜPHANE BOŞ<br><br><span style="color:var(--muted);letter-spacing:0;font-family:Inter">Pilot kitapları, seyir notları, liman rehberleri — PDF veya fotoğraf olarak ekleyin. 2. Kaptan bunları kaynak olarak kullanır.</span></div>`;
+        data-note="${f.id}" value="${esc(f.note||'')}" placeholder="${t('notePlaceholder')}">
+      <select class="f" style="font-size:10.5px;padding:5px 7px;border-radius:0;border:none;border-top:1px solid var(--line)"
+        data-movefile="${f.id}">${folderOptions(f.folder||'')}</select>
+    </div>`;
+}
+function vLibrary(){
+  const items=lib();
+  const grouped=D.libFolders.map(name=>({name,files:items.filter(f=>(f.folder||'')===name)}));
+  const loose=items.filter(f=>!f.folder||!D.libFolders.includes(f.folder));
+  const sections=grouped.map(g=>`
+    <div class="row" style="margin:22px 0 10px">
+      <span class="itemname" style="font-size:15.5px">${esc(g.name)} <span class="meta" style="display:inline">· ${g.files.length} ${t('pageWordLower')}</span></span>
+      <button class="del" data-delfolder="${esc(g.name)}">${svg(I.trash,14)}</button>
+    </div>
+    ${g.files.length?`<div class="filegrid">${g.files.map(fileCard).join('')}</div>`:`<div class="empty" style="padding:18px">${t('libFolderEmpty')}</div>`}
+  `).join('');
+  const looseSection = loose.length? `
+    <div class="row" style="margin:22px 0 10px"><span class="itemname" style="font-size:15.5px">${t('libFolderless')}</span></div>
+    <div class="filegrid">${loose.map(fileCard).join('')}</div>` : '';
+  const body = items.length ? (sections+looseSection) : `<div class="empty">${t('libEmpty')}<br><br><span style="color:var(--muted);letter-spacing:0;font-family:Inter">${t('libEmptySub')}</span></div>`;
   return `<div class="row">
-      <span class="mono" style="font-size:12px;color:var(--dim)">${items.length} kaynak · 2. Kaptan'ın erişimine açık</span>
-      <div style="display:flex;gap:7px">
-        <label class="btn" for="libPhoto">${svg(I.plus,13)} Fotoğraf</label>
-        <input type="file" id="libPhoto" multiple accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0">
-        <label class="btn ghost" for="libDoc">${svg(I.plus,13)} PDF / Belge</label>
-        <input type="file" id="libDoc" multiple style="position:absolute;width:1px;height:1px;opacity:0">
+      <span class="mono" style="font-size:12px;color:var(--dim)">${items.length} ${t('unitSource')} · ${D.libFolders.length} ${t('folderCountSuffix')} · ${t('libAccessSuffix')}</span>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn ghost sm" id="newFolderBtn">${svg(I.plus,13)} ${t('libNewFolder')}</button>
       </div></div>
-    <p class="hint" style="margin-bottom:14px">Her kaynağa kısa bir not yazın (ör. "Doğu Ege pilot — demirleme yerleri"). 2. Kaptan bu notlara bakarak hangi kaynağı açacağına karar verir.</p>
-    ${list}`;
+    <div class="card" style="margin-bottom:16px">
+      <label class="f"><span>${t('libTargetFolder')}</span><select class="f" id="libFolderTarget">${folderOptions('')}</select></label>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <label class="btn" for="libPhoto">${svg(I.plus,13)} ${t('libPhotoBtn')}</label>
+        <input type="file" id="libPhoto" multiple accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0">
+        <label class="btn ghost" for="libDoc">${svg(I.plus,13)} ${t('libDocBtn')}</label>
+        <input type="file" id="libDoc" multiple style="position:absolute;width:1px;height:1px;opacity:0">
+      </div>
+    </div>
+    <p class="hint">${t('libHint')}</p>
+    ${body}`;
 }
 
 /* ---------- arşiv ---------- */
@@ -518,20 +945,20 @@ function vFiles(){
       ${f.type.startsWith('image/')?`<img class="thumb" style="border:none;border-radius:0;border-bottom:1px solid var(--line)" src="${f.url}">`
         :`<div class="docicon">${svg(I.file,26,'#5C7085')}</div>`}
       <div class="cap">${esc(f.name)}</div>
-    </div>`).join('')}</div>`:`<div class="empty">ARŞİV BOŞ<br><br><span style="color:var(--muted);letter-spacing:0;font-family:Inter">Fotoğraf butonu galerinizi, Belge butonu Dosyalar'ı açar.</span></div>`;
+    </div>`).join('')}</div>`:`<div class="empty">${t('archEmpty')}<br><br><span style="color:var(--muted);letter-spacing:0;font-family:Inter">${t('archEmptySub')}</span></div>`;
   return `<div class="row">
-      <span class="mono" style="font-size:12px;color:var(--dim)">${items.length} dosya · cihazınızda</span>
+      <span class="mono" style="font-size:12px;color:var(--dim)">${items.length} ${t('archCountSuffix')}</span>
       <div style="display:flex;gap:7px">
-        <label class="btn" for="upPhoto">${svg(I.plus,13)} Fotoğraf</label>
+        <label class="btn" for="upPhoto">${svg(I.plus,13)} ${t('libPhotoBtn')}</label>
         <input type="file" id="upPhoto" multiple accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0">
-        <label class="btn ghost" for="upDoc">${svg(I.plus,13)} Belge</label>
+        <label class="btn ghost" for="upDoc">${svg(I.plus,13)} ${t('libDocBtn')}</label>
         <input type="file" id="upDoc" multiple style="position:absolute;width:1px;height:1px;opacity:0">
       </div></div>${list}`;
 }
 
-function head(count,type,btn){return `<div class="row"><span class="mono" style="font-size:12px;color:var(--dim)">${count}</span>
-  <button class="btn" data-new="${type}">${svg(I.plus,13)} ${btn}</button></div>`}
-function fHead(){return `<div class="row" style="margin-bottom:12px"><span class="lbl" style="color:var(--brass)">YENİ / DÜZENLE</span>
+function head(countText,type,btnText){return `<div class="row"><span class="mono" style="font-size:12px;color:var(--dim)">${countText}</span>
+  <button class="btn" data-new="${type}">${svg(I.plus,13)} ${btnText}</button></div>`}
+function fHead(){return `<div class="row" style="margin-bottom:12px"><span class="lbl" style="color:var(--brass)">${t('newOrEdit')}</span>
   <button class="del" id="cancelBtn">${svg(I.x,16)}</button></div>`}
 
 /* ---------- render ---------- */
@@ -557,10 +984,10 @@ function wire(){
     const t=b.dataset.edit,arr=t==='yacht'?D.yachts:t==='route'?D.routes:D.itins;
     editing={t,v:{...arr.find(x=>x.id===b.dataset.id)}};render()});
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
-    if(!confirm('Bu kayıt silinsin mi?'))return;const t=b.dataset.del,id=b.dataset.id;
-    if(t==='yacht')D.yachts=D.yachts.filter(x=>x.id!==id);
-    if(t==='route')D.routes=D.routes.filter(x=>x.id!==id);
-    if(t==='itin')D.itins=D.itins.filter(x=>x.id!==id);
+    if(!confirm(t('confirmDeleteRecord')))return;const tt=b.dataset.del,id=b.dataset.id;
+    if(tt==='yacht')D.yachts=D.yachts.filter(x=>x.id!==id);
+    if(tt==='route')D.routes=D.routes.filter(x=>x.id!==id);
+    if(tt==='itin')D.itins=D.itins.filter(x=>x.id!==id);
     await saveData();render()});
   const cb=document.getElementById('cancelBtn');if(cb)cb.onclick=()=>{editing=null;editDay=null;render()};
   const sb=document.getElementById('saveBtn');if(sb)sb.onclick=saveForm;
@@ -576,7 +1003,7 @@ function wire(){
     it.days=it.days||[];const d={id:uid()};it.days.push(d);await saveData();editDay=d.id;render()};
   document.querySelectorAll('[data-editday]').forEach(b=>b.onclick=()=>{editDay=(editDay===b.dataset.editday?null:b.dataset.editday);render()});
   document.querySelectorAll('[data-delday]').forEach(b=>b.onclick=async()=>{
-    if(!confirm('Bu gün silinsin mi?'))return;const it=D.itins.find(i=>i.id===openItin);
+    if(!confirm(t('confirmDeleteDay')))return;const it=D.itins.find(i=>i.id===openItin);
     it.days=(it.days||[]).filter(x=>x.id!==b.dataset.delday);await saveData();editDay=null;render()});
   const sd=document.getElementById('saveDayBtn');
   if(sd)sd.onclick=async()=>{
@@ -596,14 +1023,38 @@ function wire(){
     d.photoIds=(d.photoIds||[]).filter(x=>x!==b.dataset.fid);await saveData();render()});
   const pb=document.getElementById('printBtn');if(pb)pb.onclick=()=>doPrint(D.itins.find(i=>i.id===openItin));
   document.querySelectorAll('[data-adddayai]').forEach(b=>b.onclick=()=>{
-    openChat(`"${D.itins.find(i=>i.id===openItin)?.title}" broşürü için bir gün metni yazar mısın? Rota, mesafe ve süre bilgisini de öner.`)});
+    const it=D.itins.find(i=>i.id===openItin);
+    const route=D.routes.find(r=>r.id===it?.routeId);
+    const stopsTxt=route?.stops?` ${t('aiDayStopsFragment')}${route.stops}.`:'';
+    openChat(`"${it?.title}" ${t('aiDayPrefillPre')}${stopsTxt} ${t('aiDayPrefillPost')}`)});
 
   // dosyalar
-  [['upPhoto','archive'],['upDoc','archive'],['libPhoto','library'],['libDoc','library']].forEach(([id,kind])=>{
+  const nfb=document.getElementById('newFolderBtn');
+  if(nfb)nfb.onclick=async()=>{
+    const name=prompt(t('promptNewFolder'));
+    if(!name||!name.trim())return;
+    const clean=name.trim();
+    if(!D.libFolders.includes(clean)){D.libFolders.push(clean);await saveData();}
+    render();
+  };
+  [['upPhoto','archive',null],['upDoc','archive',null]].forEach(([id,kind])=>{
     const el=document.getElementById(id);if(!el)return;
     el.onchange=async e=>{const fs=[...e.target.files];if(!fs.length)return;await addFiles(fs,kind);render()}});
+  [['libPhoto','library'],['libDoc','library']].forEach(([id,kind])=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.onchange=async e=>{const fs=[...e.target.files];if(!fs.length)return;
+      const sel=document.getElementById('libFolderTarget');
+      await addFiles(fs,kind,sel?sel.value:'');render()}});
+  document.querySelectorAll('[data-delfolder]').forEach(b=>b.onclick=async()=>{
+    const name=b.dataset.delfolder;
+    if(!confirm(`"${name}" ${t('confirmDeleteFolder')}`))return;
+    D.libFolders=D.libFolders.filter(n=>n!==name);await saveData();
+    for(const f of lib().filter(f=>f.folder===name)) await moveFileFolder(f.id,null);
+    render()});
+  document.querySelectorAll('[data-movefile]').forEach(sel=>sel.onchange=async()=>{
+    await moveFileFolder(sel.dataset.movefile,sel.value);render()});
   document.querySelectorAll('[data-delfile]').forEach(b=>b.onclick=async()=>{
-    if(!confirm('Bu dosya silinsin mi?'))return;await idbDel('files',b.dataset.delfile);await loadFiles();render()});
+    if(!confirm(t('confirmDeleteFile')))return;await idbDel('files',b.dataset.delfile);await loadFiles();render()});
   document.querySelectorAll('[data-note]').forEach(inp=>inp.onchange=async()=>{
     const rec=await idbGet('files',inp.dataset.note);if(!rec)return;
     rec.note=inp.value;await idbPut('files',rec);await loadFiles()});
@@ -611,13 +1062,13 @@ function wire(){
 
 async function saveForm(){
   const g=id=>{const el=document.getElementById(id);return el?el.value.trim():''};
-  const t=editing.t,v=editing.v;
-  if(t==='yacht'){Object.assign(v,{name:g('f_name'),type:g('f_type'),guests:g('f_guests'),speed:g('f_speed'),loa:g('f_loa'),port:g('f_port')});
-    if(!v.name)return alert('Tekne adı gerekli.');D.yachts=upsert(D.yachts,v);}
-  else if(t==='route'){Object.assign(v,{name:g('f_name'),region:g('f_region'),days:g('f_days'),stops:g('f_stops')});
-    if(!v.name)return alert('Rota adı gerekli.');D.routes=upsert(D.routes,v);}
+  const t_=editing.t,v=editing.v;
+  if(t_==='yacht'){Object.assign(v,{name:g('f_name'),type:g('f_type'),guests:g('f_guests'),speed:g('f_speed'),loa:g('f_loa'),port:g('f_port')});
+    if(!v.name)return alert(t('alertYachtNameRequired'));D.yachts=upsert(D.yachts,v);}
+  else if(t_==='route'){Object.assign(v,{name:g('f_name'),region:g('f_region'),days:g('f_days'),stops:g('f_stops')});
+    if(!v.name)return alert(t('alertRouteNameRequired'));D.routes=upsert(D.routes,v);}
   else{Object.assign(v,{title:g('f_title'),yachtId:g('f_yachtId'),routeId:g('f_routeId'),dates:g('f_dates'),intro:g('f_intro')});
-    if(!v.title)return alert('Başlık gerekli.');v.days=v.days||[];D.itins=upsert(D.itins,v);}
+    if(!v.title)return alert(t('alertTitleRequired'));v.days=v.days||[];D.itins=upsert(D.itins,v);}
   await saveData();editing=null;render();
 }
 const upsert=(a,v)=>a.some(x=>x.id===v.id)?a.map(x=>x.id===v.id?v:x):[...a,v];
@@ -631,20 +1082,20 @@ function doPrint(it){
     return `<section class="p-day">
       <div class="dh">
         <div><span class="dn">${String(i+1).padStart(2,'0')}</span></div>
-        <div><div class="dt">${esc(d.title||'')}</div><div class="dd">GÜN ${i+1} · ${esc(d.date||'')}</div></div>
+        <div><div class="dt">${esc(d.title||'')}</div><div class="dd">${t('printDayWord')} ${i+1} · ${esc(d.date||'')}</div></div>
       </div>
       ${d.narrative?`<div class="narr">${esc(d.narrative)}</div>`:''}
       <div class="p-leg">
-        <div><div class="k">Kalkış</div><div class="v">${esc(d.depart||'—')}</div><div class="k" style="margin-top:2px">${esc(d.from||'')}</div></div>
-        <div><div class="k">Varış</div><div class="v">${esc(d.arrive||'—')}</div><div class="k" style="margin-top:2px">${esc(d.to||'')}</div></div>
-        <div><div class="k">Mesafe</div><div class="v">${esc(d.distance||'—')} nm</div></div>
-        <div><div class="k">Tahmini Süre</div><div class="v">${etaText(it,d)}</div></div>
+        <div><div class="k">${t('printDepart')}</div><div class="v">${esc(d.depart||'—')}</div><div class="k" style="margin-top:2px">${esc(d.from||'')}</div></div>
+        <div><div class="k">${t('printArrive')}</div><div class="v">${esc(d.arrive||'—')}</div><div class="k" style="margin-top:2px">${esc(d.to||'')}</div></div>
+        <div><div class="k">${t('printDistance')}</div><div class="v">${esc(d.distance||'—')} nm</div></div>
+        <div><div class="k">${t('printDuration')}</div><div class="v">${etaText(it,d)}</div></div>
       </div>
       ${imgs?`<div class="p-imgs">${imgs}</div>`:''}
     </section>`}).join('');
   document.getElementById('printroot').innerHTML=`
     <section class="p-cover">
-      <div class="eyebrow">KAPTAN KÖŞESİ · SEYİR PROGRAMI</div>
+      <div class="eyebrow">${t('printCoverEyebrow')}</div>
       <h1>${esc(it.title)}</h1>
       <div class="sub">${esc(y?y.name:'')} ${y?.type?'· '+esc(y.type):''} ${it.dates?'· '+esc(it.dates):''}</div>
       ${it.intro?`<div class="intro">${esc(it.intro)}</div>`:''}
@@ -664,23 +1115,23 @@ document.getElementById('importFile').onchange=e=>{
   r.onload=async()=>{
     try{
       const incoming=JSON.parse(r.result);
-      if(!incoming||typeof incoming!=='object')throw new Error('geçersiz dosya');
-      const mode=confirm(
-        'Tamam = MEVCUT VERİNİN ÜZERİNE YAZ (yedekteki ile değiştir)\nİptal = MEVCUT VERİYLE BİRLEŞTİR (ekle, üzerine yazma)'
-      );
+      if(!incoming||typeof incoming!=='object')throw new Error(t('errInvalidFile'));
+      const mode=confirm(t('confirmImportMode'));
       if(mode){
-        D={yachts:incoming.yachts||[],routes:incoming.routes||[],itins:(incoming.itins||[]).map(i=>({...i,days:i.days||[]}))};
+        D={yachts:incoming.yachts||[],routes:incoming.routes||[],itins:(incoming.itins||[]).map(i=>({...i,days:i.days||[]})),libFolders:incoming.libFolders||[]};
       }else{
         const mergeArr=(a,b)=>{const ids=new Set(a.map(x=>x.id));return [...a,...b.filter(x=>!ids.has(x.id))]};
+        const mergeStrArr=(a,b)=>[...new Set([...a,...(b||[])])];
         D={
           yachts:mergeArr(D.yachts,incoming.yachts||[]),
           routes:mergeArr(D.routes,incoming.routes||[]),
-          itins:mergeArr(D.itins,(incoming.itins||[]).map(i=>({...i,days:i.days||[]})))
+          itins:mergeArr(D.itins,(incoming.itins||[]).map(i=>({...i,days:i.days||[]}))),
+          libFolders:mergeStrArr(D.libFolders,incoming.libFolders||[])
         };
       }
       await saveData();render();
-      alert('İçe aktarma tamamlandı. Not: fotoğraflar yedeğe dahil değildir, ayrıca eklenmelidir.');
-    }catch(err){alert('Dosya okunamadı: '+err.message)}
+      alert(t('alertImportDone'));
+    }catch(err){alert(t('alertImportError')+err.message)}
   };
   r.readAsText(f);e.target.value='';
 };
@@ -711,9 +1162,20 @@ function drawPending(){
 function drawCtx(){
   const items=lib();
   const bar=document.getElementById('ctxbar');
-  if(!items.length){bar.innerHTML=`<span class="hint">Kütüphane boş — kaynak eklerseniz burada seçebilirsiniz.</span>`;return}
-  bar.innerHTML=`<span class="lbl" style="width:100%">KÜTÜPHANEDEN EKLE</span>`+items.map(f=>
-    `<span class="chip ${LIBSEL.includes(f.id)?'on':''}" data-lib="${f.id}">${esc(f.name.slice(0,26))}</span>`).join('');
+  if(!items.length){bar.innerHTML=`<span class="hint">${t('chatLibEmpty')}</span>`;return}
+  const hint=`<span class="hint" style="width:100%;margin-bottom:2px">${t('chatHint')}</span>`;
+  const grouped=D.libFolders.map(name=>({name,files:items.filter(f=>f.folder===name)})).filter(g=>g.files.length);
+  const loose=items.filter(f=>!f.folder||!D.libFolders.includes(f.folder));
+  let html=hint;
+  grouped.forEach(g=>{
+    html+=`<span class="lbl" style="width:100%;margin-top:4px">${esc(g.name)}</span>`+g.files.map(f=>
+      `<span class="chip ${LIBSEL.includes(f.id)?'on':''}" data-lib="${f.id}">${esc(f.name.slice(0,22))}</span>`).join('');
+  });
+  if(loose.length){
+    html+=`<span class="lbl" style="width:100%;margin-top:4px">${t('libFolderless')}</span>`+loose.map(f=>
+      `<span class="chip ${LIBSEL.includes(f.id)?'on':''}" data-lib="${f.id}">${esc(f.name.slice(0,26))}</span>`).join('');
+  }
+  bar.innerHTML=html;
   document.querySelectorAll('[data-lib]').forEach(c=>c.onclick=()=>{
     const id=c.dataset.lib;LIBSEL=LIBSEL.includes(id)?LIBSEL.filter(x=>x!==id):[...LIBSEL,id];drawCtx()});
 }
@@ -722,10 +1184,10 @@ function drawMsgs(){
   const box=document.getElementById('msgs');
   if(!localStorage.getItem('anthropic_key')){
     box.innerHTML=`<div class="hint">
-      <p style="margin-bottom:11px;color:var(--chart)"><strong>2. Kaptan'ı bağlamak için API anahtarı gerekli.</strong></p>
-      <p style="margin-bottom:11px">platform.claude.com adresinden anahtar oluşturup buraya yapıştırın. Anahtar yalnızca bu cihazda saklanır.</p>
+      <p style="margin-bottom:11px;color:var(--chart)"><strong>${t('chatKeyNeededTitle')}</strong></p>
+      <p style="margin-bottom:11px">${t('chatKeyNeededBody')}</p>
       <input class="f" id="keyIn" type="password" placeholder="sk-ant-…" style="margin-bottom:9px">
-      <button class="btn" id="keySave">Anahtarı Kaydet</button></div>`;
+      <button class="btn" id="keySave">${t('chatKeySave')}</button></div>`;
     document.getElementById('keySave').onclick=()=>{const k=document.getElementById('keyIn').value.trim();
       if(!k)return;localStorage.setItem('anthropic_key',k);drawMsgs()};
     return;
@@ -733,39 +1195,53 @@ function drawMsgs(){
   box.innerHTML=CHAT.length?CHAT.map((m,i)=>{
     const cls=m.role==='user'?'me':m.role==='error'?'err':'cap';
     const acts=m.role==='assistant'&&m.text!=='…'?`<div class="msgacts">
-      <button data-copy="${i}">KOPYALA</button><button data-share="${i}">PAYLAŞ</button>
-      <button data-dl="${i}">İNDİR</button><button data-save="${i}">ARŞİVE KAYDET</button></div>`:'';
+      <button data-copy="${i}">${t('chatCopy')}</button><button data-share="${i}">${t('chatShare')}</button>
+      <button data-dl="${i}">${t('chatDownload')}</button><button data-save="${i}">${t('chatSaveArchive')}</button></div>`:'';
     return `<div class="msg ${cls}">${esc(m.text)}${acts}</div>`}).join('')
-    :`<div class="hint">Rota planı, hava değerlendirmesi, liman bilgisi, broşür metni — ne gerekiyorsa sorun.<br><br>
-      Uygulamadaki tüm sekmeleri görebiliyorum: tekneler, rotalar, broşürler, kütüphane ve arşiv. İnternette arama yapabilir,
-      kütüphanenizdeki kaynakları okuyabilirim. Fotoğraf veya PDF de ekleyebilirsiniz.</div>`;
+    :`<div class="hint">${t('chatEmptyIntro')}</div>`;
   box.scrollTop=box.scrollHeight;
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{
-    navigator.clipboard.writeText(CHAT[+b.dataset.copy].text);b.textContent='KOPYALANDI'});
+    navigator.clipboard.writeText(CHAT[+b.dataset.copy].text);b.textContent=t('chatCopied')});
   document.querySelectorAll('[data-share]').forEach(b=>b.onclick=()=>{
-    const t=CHAT[+b.dataset.share].text;
-    if(navigator.share)navigator.share({text:t}).catch(()=>{});else{navigator.clipboard.writeText(t);b.textContent='KOPYALANDI'}});
+    const tx=CHAT[+b.dataset.share].text;
+    if(navigator.share)navigator.share({text:tx}).catch(()=>{});else{navigator.clipboard.writeText(tx);b.textContent=t('chatCopied')}});
   document.querySelectorAll('[data-dl]').forEach(b=>b.onclick=()=>{
     const blob=new Blob([CHAT[+b.dataset.dl].text],{type:'text/markdown'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);
     a.download='2-kaptan-'+Date.now()+'.md';a.click()});
   document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{
-    const t=CHAT[+b.dataset.save].text;
-    const blob=new Blob([t],{type:'text/markdown'});
-    await idbPut('files',{id:uid(),name:'2. Kaptan notu — '+new Date().toLocaleDateString('tr-TR'),
+    const tx=CHAT[+b.dataset.save].text;
+    const blob=new Blob([tx],{type:'text/markdown'});
+    await idbPut('files',{id:uid(),name:t('captainNotePrefix')+new Date().toLocaleDateString(),
       type:'text/markdown',blob,kind:'archive',added:Date.now(),note:''});
-    await loadFiles();b.textContent='KAYDEDİLDİ';if(cur==='files')render()});
+    await loadFiles();b.textContent=t('chatSaved');if(cur==='files')render()});
 }
 
 function ctxText(){
   const clean=o=>JSON.parse(JSON.stringify(o,(k,v)=>k==='photo'?undefined:v));
-  return `Kullanıcı deneyimli bir yat kaptanı. Uygulamasındaki güncel kayıtlar:
+  const folderSummary=D.libFolders.map(name=>`${name} (${lib().filter(f=>f.folder===name).length} pages)`).join(' | ')||'none';
+  const looseSummary=lib().filter(f=>!f.folder||!D.libFolders.includes(f.folder)).map(f=>f.name).join(', ')||'none';
+  return `The user is an experienced yacht captain. Current records in the app:
 
-TEKNELER: ${JSON.stringify(clean(D.yachts))}
-ROTALAR: ${JSON.stringify(D.routes)}
-BROŞÜRLER/İTİNERARYLER: ${JSON.stringify(clean(D.itins))}
-KÜTÜPHANE KAYNAKLARI (denizcilik notları, pilot kitapları): ${lib().map(f=>f.name+(f.note?' — '+f.note:'')).join(' | ')||'yok'}
-ARŞİVDEKİ DOSYALAR: ${arch().map(f=>f.name).join(', ')||'yok'}`;
+YACHTS: ${JSON.stringify(clean(D.yachts))}
+ROUTES: ${JSON.stringify(D.routes)}
+BROCHURES/ITINERARIES: ${JSON.stringify(clean(D.itins))}
+LIBRARY FOLDERS (each folder is one book/source): ${folderSummary}
+UNFOLDERED LIBRARY FILES: ${looseSummary}
+ARCHIVE FILES: ${arch().map(f=>f.name).join(', ')||'none'}`;
+}
+
+// Mesaj metnindeki durak/bölge isimleriyle klasör (kitap) adlarını eşleştirip,
+// eşleşen klasörlerin TÜM dosyalarını otomatik seçer — sormadan tarama için.
+function autoMatchLibraryIds(text){
+  const norm=s=>(s||'').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü0-9]+/g,' ').trim();
+  const t=' '+norm(text)+' ';
+  const matchedFolders=D.libFolders.filter(name=>{
+    const words=norm(name).split(' ').filter(w=>w.length>=4);
+    return words.some(w=>t.includes(' '+w));
+  });
+  if(!matchedFolders.length)return [];
+  return lib().filter(f=>matchedFolders.includes(f.folder)).map(f=>f.id);
 }
 
 async function send(){
@@ -773,6 +1249,20 @@ async function send(){
   const text=inp.value.trim();
   if(!text&&!PENDING.length&&!LIBSEL.length)return;
   inp.value='';
+
+  // Kullanıcı elle bir kaynak seçmediyse: önce mesajdaki durak/bölge isimleriyle eşleşen
+  // klasörleri (kitapları) hiç sormadan tara; eşleşme yoksa ve "kütüphane"/"library" geçiyorsa hepsini ekle.
+  let autoAttached = 0;
+  if(!LIBSEL.length){
+    const matched = autoMatchLibraryIds(text);
+    if(matched.length){
+      LIBSEL = matched.slice(0,10);
+      autoAttached = LIBSEL.length;
+    } else if(/k[üu]t[üu]phane|library|библиотек|biblioteca/i.test(text)){
+      LIBSEL = lib().slice(0,8).map(f=>f.id);
+      autoAttached = LIBSEL.length;
+    }
+  }
 
   const parts=[];
   for(const id of LIBSEL){
@@ -785,9 +1275,10 @@ async function send(){
     if(p.type.startsWith('image/'))parts.push({type:'image',source:{type:'base64',media_type:p.type,data:p.b64}});
     else if(p.type==='application/pdf')parts.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:p.b64}});
   }
-  parts.push({type:'text',text:text||'Ekteki kaynakları değerlendir.'});
+  parts.push({type:'text',text:text||t('evalAttachedFallback')});
 
-  const label=text+(PENDING.length?`  [${PENDING.length} ek]`:'')+(LIBSEL.length?`  [${LIBSEL.length} kütüphane kaynağı]`:'');
+  const label=text+(PENDING.length?`  [${PENDING.length} ${t('attachSuffix')}]`:'')+
+    (LIBSEL.length?(autoAttached?`  [${LIBSEL.length} ${t('libSourceAutoSuffix')}]`:`  [${LIBSEL.length} ${t('libSourceSuffix')}]`):'');
   CHAT.push({role:'user',text:label,parts});
   PENDING=[];LIBSEL=[];drawPending();drawCtx();
   CHAT.push({role:'assistant',text:'…'});drawMsgs();
@@ -801,10 +1292,12 @@ async function send(){
         'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({
         model:'claude-sonnet-4-6',max_tokens:3000,
-        system:`Sen bu kaptanın 2. kaptanısın. Denizcilik uzmanlığı ve yat işletme yönetimi perspektifiyle, Türkçe, net ve pratik cevap ver. Gereksiz uzatma.
-Broşür metni istenirse misafirlere ve brokerlara uygun, akıcı ve sıcak bir dille yaz.
-Kaptanın kendi kütüphanesindeki kaynaklar sana ek olarak verildiyse onları internetteki bilgiye tercih et — bunlar sahada denenmiş, güvenilir bilgilerdir.
-Güncel bilgi (hava, liman ücreti, mevzuat, sezon bilgisi) gerektiğinde web arama aracını kullan.
+        system:`You are this captain's second-in-command ("2. Kaptan" / 2nd Captain). Respond in ${RESPOND_LANG[LANG]||'Turkish'}, with maritime expertise and a yacht-operations management perspective — clear and practical, no unnecessary padding.
+If asked for brochure text, write it warm and fluent, suitable for guests and charter brokers.
+If the captain's own library sources are provided to you as attachments, prefer them over general web knowledge — they are field-tested and trustworthy.
+Use the web search tool when current information is needed (weather, harbor fees, regulations, seasonal info).
+
+IMPORTANT — how your access to library sources works: the library info below is only folder (book) names, page counts, and any notes — you CANNOT automatically see the actual image/PDF content of these sources. Content only actually reaches you when: (1) stop/region names in the message match a folder name, in which case the app automatically attaches ALL pages in that folder without asking — this is how you can already scan the right books when given specific stops/spots, no permission needed; (2) the user's message contains the word "library" (in their language), which attaches all sources; (3) the user taps the relevant source's chip below the chat box. If you're asked to interpret a source's content but there is no actual image/PDF block attached to the message (i.e. you only see a name/note — the folder name probably didn't match any stop name), tell the user briefly and clearly, in ${RESPOND_LANG[LANG]||'Turkish'}: "match the book's folder name to the stop name, or mention 'library' in your message." NEVER suggest methods that don't exist in this app (external upload, copying elsewhere, etc).
 
 ${ctxText()}`,
         tools:[{type:'web_search_20250305',name:'web_search'}],
@@ -813,23 +1306,57 @@ ${ctxText()}`,
     });
     const data=await res.json();
     CHAT.pop();
-    if(data.error)CHAT.push({role:'error',text:'Hata: '+(data.error.message||'bilinmeyen')});
-    else CHAT.push({role:'assistant',text:(data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n').trim()||'(boş yanıt)'});
-  }catch(err){CHAT.pop();CHAT.push({role:'error',text:'Bağlantı kurulamadı: '+err.message})}
+    if(data.error)CHAT.push({role:'error',text:t('chatErrorPrefix')+(data.error.message||t('chatErrorUnknown'))});
+    else CHAT.push({role:'assistant',text:(data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n').trim()||t('chatEmptyResponse')});
+  }catch(err){CHAT.pop();CHAT.push({role:'error',text:t('chatConnFail')+err.message})}
   drawMsgs();
 }
 document.getElementById('sendBtn').onclick=send;
 document.getElementById('chatIn').addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 
+/* ---------- erişim kodu ---------- */
+function checkAccess(){
+  return sessionStorage.getItem('yy_unlocked')==='1' || localStorage.getItem('yy_unlocked_code')===ACCESS_CODE;
+}
+function wireLock(){
+  const scr=document.getElementById('lockScreen');
+  const inp=document.getElementById('lockInput');
+  const btn=document.getElementById('lockBtn');
+  const err=document.getElementById('lockErr');
+  const tryUnlock=()=>{
+    if(inp.value.trim()===ACCESS_CODE){
+      sessionStorage.setItem('yy_unlocked','1');
+      localStorage.setItem('yy_unlocked_code',ACCESS_CODE);
+      scr.classList.add('hidden');
+      startApp();
+    }else{
+      err.style.display='block';inp.value='';inp.focus();
+    }
+  };
+  btn.onclick=tryUnlock;
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')tryUnlock()});
+}
+
 /* ---------- başlat ---------- */
-(async()=>{
+async function startApp(){
   await openDB();
   const saved=await idbGet('kv','data');
-  if(saved)D={yachts:saved.yachts||[],routes:saved.routes||[],itins:(saved.itins||[]).map(i=>({...i,days:i.days||[]}))};
+  if(saved)D={yachts:saved.yachts||[],routes:saved.routes||[],itins:(saved.itins||[]).map(i=>({...i,days:i.days||[]})),libFolders:saved.libFolders||[]};
   await loadFiles();
   render();
+}
+(async()=>{
+  applyStaticLangText();
+  if(checkAccess()){
+    document.getElementById('lockScreen').classList.add('hidden');
+    await startApp();
+  }else{
+    wireLock();
+    document.getElementById('lockInput').focus();
+  }
 })();
+
 </script>
 </body>
 </html>
