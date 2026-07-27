@@ -196,7 +196,11 @@
         <div class="brg mono" id="topbrg">000°</div>
         <h2 id="toptitle">Genel Bakış</h2>
       </div>
-      <button class="btn ghost sm" id="exportBtn">Yedek Al</button>
+      <div style="display:flex;gap:8px">
+        <label class="btn ghost sm" for="importFile">İçe Aktar</label>
+        <input type="file" id="importFile" accept="application/json" style="position:absolute;width:1px;height:1px;opacity:0">
+        <button class="btn ghost sm" id="exportBtn">Yedek Al</button>
+      </div>
     </header>
     <div class="wrap" id="view"></div>
   </main>
