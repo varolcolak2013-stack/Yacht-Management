@@ -1317,7 +1317,7 @@ document.getElementById('chatIn').addEventListener('keydown',e=>{
 
 /* ---------- erişim kodu ---------- */
 function checkAccess(){
-  return sessionStorage.getItem('yy_unlocked')==='1' || localStorage.getItem('yy_unlocked_code')===ACCESS_CODE;
+  return localStorage.getItem('yy_unlocked_code')===ACCESS_CODE;
 }
 function wireLock(){
   const scr=document.getElementById('lockScreen');
@@ -1325,8 +1325,8 @@ function wireLock(){
   const btn=document.getElementById('lockBtn');
   const err=document.getElementById('lockErr');
   const tryUnlock=()=>{
-    if(inp.value.trim()===ACCESS_CODE){
-      sessionStorage.setItem('yy_unlocked','1');
+    const entered=(inp.value||'').trim();
+    if(entered && entered===ACCESS_CODE){
       localStorage.setItem('yy_unlocked_code',ACCESS_CODE);
       scr.classList.add('hidden');
       startApp();
@@ -1335,7 +1335,7 @@ function wireLock(){
     }
   };
   btn.onclick=tryUnlock;
-  inp.addEventListener('keydown',e=>{if(e.key==='Enter')tryUnlock()});
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();tryUnlock();}});
 }
 
 /* ---------- başlat ---------- */
@@ -1347,6 +1347,9 @@ async function startApp(){
   render();
 }
 (async()=>{
+  if(new URLSearchParams(location.search).has('relock')){
+    localStorage.removeItem('yy_unlocked_code');
+  }
   applyStaticLangText();
   if(checkAccess()){
     document.getElementById('lockScreen').classList.add('hidden');
