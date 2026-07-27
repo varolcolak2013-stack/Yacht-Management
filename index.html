@@ -81,6 +81,14 @@
   .langsel{background:transparent;border:1px solid var(--line-soft);color:var(--muted);font-size:11px;
     border-radius:3px;padding:7px 8px;outline:none}
   .langsel:focus{border-color:var(--brass)}
+  .langmenu{position:absolute;top:calc(100% + 6px);right:0;background:var(--navy-card);
+    border:1px solid var(--line);border-radius:4px;min-width:150px;z-index:90;
+    padding:5px 0;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
+  .langmenu.open{display:block}
+  .langmenu button{display:block;width:100%;text-align:left;padding:9px 15px;font-size:13px;
+    color:var(--muted);background:none;border:none;cursor:pointer}
+  .langmenu button.on{color:var(--brass);font-weight:600}
+  .langmenu button:active{background:var(--navy)}
 
   .lockscreen{position:fixed;inset:0;z-index:200;background:var(--navy-deep);display:flex;
     align-items:center;justify-content:center;padding:24px}
@@ -222,7 +230,10 @@
         <h2 id="toptitle">Genel Bakış</h2>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <select class="langsel" id="langSel"></select>
+        <div style="position:relative">
+          <button class="btn ghost sm" id="langBtn" type="button">Dil ▾</button>
+          <div id="langMenu" class="langmenu"></div>
+        </div>
         <label class="btn ghost sm" for="importFile" id="importLbl">İçe Aktar</label>
         <input type="file" id="importFile" accept="application/json" style="position:absolute;width:1px;height:1px;opacity:0">
         <button class="btn ghost sm" id="exportBtn">Yedek Al</button>
@@ -623,11 +634,28 @@ function applyStaticLangText(){
   const sf=document.querySelector('.sidefoot');if(sf)sf.textContent=t('sidefoot');
   const il=document.getElementById('importLbl');if(il)il.textContent=t('importBtn');
   const eb=document.getElementById('exportBtn');if(eb)eb.textContent=t('exportBtn');
-  const ls=document.getElementById('langSel');
-  if(ls){
-    ls.innerHTML=LANGS.map(l=>`<option value="${l}" ${l===LANG?'selected':''}>${LANG_NAMES[l]}</option>`).join('');
-    ls.onchange=()=>{LANG=ls.value;localStorage.setItem('yy_lang',LANG);applyStaticLangText();render();
-      if(sheet.classList.contains('on')){drawMsgs();drawCtx();drawPending();}};
+  const langBtn=document.getElementById('langBtn');
+  const langMenu=document.getElementById('langMenu');
+  if(langBtn && langMenu){
+    langBtn.textContent = LANG_NAMES[LANG] + ' ▾';
+    langMenu.innerHTML = LANGS.map(l=>
+      `<button type="button" data-lang="${l}" class="${l===LANG?'on':''}">${LANG_NAMES[l]}</button>`).join('');
+    langMenu.querySelectorAll('[data-lang]').forEach(btn=>{
+      btn.onclick=(e)=>{
+        e.stopPropagation();
+        LANG=btn.dataset.lang;
+        localStorage.setItem('yy_lang',LANG);
+        langMenu.classList.remove('open');
+        applyStaticLangText();
+        render();
+        if(sheet.classList.contains('on')){drawMsgs();drawCtx();drawPending();}
+      };
+    });
+    if(!langBtn.dataset.wired){
+      langBtn.dataset.wired='1';
+      langBtn.onclick=(e)=>{ e.stopPropagation(); langMenu.classList.toggle('open'); };
+      document.addEventListener('click', ()=>langMenu.classList.remove('open'));
+    }
   }
   const le=document.getElementById('lockEyebrow');if(le)le.textContent=t('lockEyebrow');
   const lt=document.getElementById('lockTitle');if(lt)lt.textContent=t('lockTitle');
@@ -1202,9 +1230,15 @@ function drawMsgs(){
   box.scrollTop=box.scrollHeight;
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{
     navigator.clipboard.writeText(CHAT[+b.dataset.copy].text);b.textContent=t('chatCopied')});
-  document.querySelectorAll('[data-share]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('[data-share]').forEach(b=>b.onclick=async()=>{
     const tx=CHAT[+b.dataset.share].text;
-    if(navigator.share)navigator.share({text:tx}).catch(()=>{});else{navigator.clipboard.writeText(tx);b.textContent=t('chatCopied')}});
+    if(!tx) return;
+    if(navigator.share){
+      try{ await navigator.share({text:tx}); return; }
+      catch(err){ if(err && err.name==='AbortError') return; }
+    }
+    try{ await navigator.clipboard.writeText(tx); b.textContent=t('chatCopied'); }catch(e){}
+  });
   document.querySelectorAll('[data-dl]').forEach(b=>b.onclick=()=>{
     const blob=new Blob([CHAT[+b.dataset.dl].text],{type:'text/markdown'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);
